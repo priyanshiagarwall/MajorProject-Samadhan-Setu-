@@ -11,20 +11,24 @@ import {
   MapPin,
   Bell,
   Settings,
-  ShieldAlert
+  ShieldAlert,
+  Share2,
+  Users
 } from 'lucide-react';
 
 const adminNavItems = [
   { label: 'Dashboard', path: '/admin', icon: LayoutDashboard, end: true },
   { label: 'Challenges', path: '/admin/challenges', icon: FolderKanban },
   { label: 'Validation Queue', path: '/admin/validation-queue', icon: CheckSquare, badge: 'SLA' },
+  { label: 'Smart Routing', path: '/admin/assignments', icon: Share2 },
+  { label: 'Projects', path: '/admin/projects', icon: Briefcase },
   { label: 'Universities', path: '/admin/universities', icon: GraduationCap },
   { label: 'Industry Partners', path: '/admin/industry-partners', icon: Building2 },
-  { label: 'Projects', path: '/admin/projects', icon: Briefcase },
+  { label: 'User & Roles', path: '/admin/users', icon: Users },
   { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
   { label: 'Geographic Map', path: '/admin/map', icon: MapPin },
   { label: 'Notifications', path: '/admin/notifications', icon: Bell },
-  { label: 'Settings', path: '/admin/settings', icon: Settings }
+  { label: 'Settings & Profile', path: '/admin/settings', icon: Settings }
 ];
 
 const AdminSidebar = ({ isOpen, onClose }) => {
@@ -47,7 +51,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
         {/* Navigation Items */}
         <div className="p-4 space-y-1 overflow-y-auto">
           <div className="px-3 py-2 text-[10px] font-bold text-gov-navy uppercase tracking-widest flex items-center justify-between">
-            <span>State Nodal Console</span>
+            <span>State Admin Console</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
           </div>
 
@@ -89,7 +93,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           <div className="p-3 bg-white border border-gov-border rounded-xs text-[11px] space-y-1">
             <div className="flex items-center space-x-1.5 text-gov-navy font-bold">
               <ShieldAlert className="w-3.5 h-3.5 text-gov-maroon" />
-              <span>Nodal Audit Log</span>
+              <span>System Audit Log</span>
             </div>
             <p className="text-gov-text-muted text-[10px] leading-snug">
               Every status validation, rejection, and university allocation is cryptographically logged with administrative timestamp.

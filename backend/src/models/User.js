@@ -74,11 +74,14 @@ const userSchema = new mongoose.Schema(
     approvalStatus: {
       type: String,
       enum: ['PENDING', 'APPROVED', 'REJECTED'],
-      default: function () {
-        // CLIENT roles are approved immediately; institutional roles can have approval workflows
-        return this.role === 'CLIENT' ? 'APPROVED' : 'PENDING';
+      default: 'APPROVED'
+    },
+    savedChallenges: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Challenge'
       }
-    }
+    ]
   },
   {
     timestamps: true

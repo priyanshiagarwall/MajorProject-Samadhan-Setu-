@@ -4,7 +4,7 @@ import { problemService } from '../services/problemService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
-import { User, Mail, Phone, Building, MapPin, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { User, Mail, Phone, Building, MapPin, CheckCircle2, AlertCircle, ShieldCheck, Camera } from 'lucide-react';
 
 const ProfilePage = () => {
   const { user } = useAuth();
@@ -13,6 +13,7 @@ const ProfilePage = () => {
   const [phone, setPhone] = useState(user?.phone || '');
   const [organization, setOrganization] = useState(user?.organization || '');
   const [district, setDistrict] = useState(user?.district || 'Central Delhi');
+  const [profileImage, setProfileImage] = useState(user?.profileImage || '');
 
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,12 +45,13 @@ const ProfilePage = () => {
         name: name.trim(),
         phone: phone.trim(),
         organization: organization.trim(),
-        district
+        district,
+        profileImage: profileImage.trim()
       });
 
       // Update cached user in storage
       const cached = JSON.parse(localStorage.getItem('delhi_portal_user') || sessionStorage.getItem('delhi_portal_user') || '{}');
-      const updated = { ...cached, name, phone, organization, district };
+      const updated = { ...cached, name, phone, organization, district, profileImage: profileImage.trim() };
       if (localStorage.getItem('delhi_portal_user')) {
         localStorage.setItem('delhi_portal_user', JSON.stringify(updated));
       } else {
@@ -229,6 +231,22 @@ const ProfilePage = () => {
                   </select>
                   <MapPin className="w-4 h-4 text-gov-text-muted absolute left-3 top-2.5" />
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-serif font-bold text-gov-navy uppercase tracking-wider mb-1">
+                Profile Image URL (Optional)
+              </label>
+              <div className="relative">
+                <input
+                  type="url"
+                  value={profileImage}
+                  onChange={(e) => setProfileImage(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  className="w-full text-sm font-serif border border-gov-border rounded-sm pl-9 pr-3 py-2 focus:ring-1 focus:ring-gov-maroon outline-none"
+                />
+                <Camera className="w-4 h-4 text-gov-text-muted absolute left-3 top-2.5" />
               </div>
             </div>
 

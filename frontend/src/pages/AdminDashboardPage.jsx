@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { adminService } from '../services/adminService';
 import { useAuth } from '../hooks/useAuth';
+import socketService from '../services/socket';
 import MetricCard from '../components/common/MetricCard';
 import ChartCard from '../components/common/ChartCard';
 import StatusBadge from '../components/common/StatusBadge';
@@ -31,7 +32,6 @@ import {
 
 import {
   FolderKanban,
-  FilePlus,
   Clock,
   CheckCircle2,
   TrendingUp,
@@ -43,7 +43,11 @@ import {
   XCircle,
   Share2,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Activity,
+  User,
+  ShieldCheck,
+  Briefcase
 } from 'lucide-react';
 
 const STATUS_COLORS = {
@@ -55,7 +59,16 @@ const STATUS_COLORS = {
   SOLUTION_PROPOSED: '#9333ea',
   PILOT_TESTING: '#0891b2',
   RESOLVED: '#059669',
-  REJECTED: '#e11d48'
+  REJECTED: '#e11d48',
+  PROTOTYPE: '#0d9488',
+  COMPLETED: '#059669'
+};
+
+const PRIORITY_COLORS = {
+  CRITICAL: '#e11d48',
+  HIGH: '#d97706',
+  MEDIUM: '#2563eb',
+  LOW: '#10b981'
 };
 
 const PIE_COLORS = ['#7a1113', '#142a45', '#b45309', '#059669', '#4f46e5', '#9333ea', '#0891b2', '#e11d48'];
@@ -64,8 +77,7 @@ const AdminDashboardPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [metrics, setMetrics] = useState(null);
-  const [charts, setCharts] = useState(null);
+  const [dashboardData, setDashboardData] = useState(null);
   const [recentChallenges, setRecentChallenges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -78,13 +90,12 @@ const AdminDashboardPage = () => {
     setLoading(true);
     setError('');
     try {
-      const [overviewRes, challengesRes] = await Promise.all([
-        adminService.getOverview(),
+      const [dashRes, challengesRes] = await Promise.all([
+        adminService.getDashboard(),
         adminService.getChallenges({ page: 1, limit: 6, sortBy: 'createdAt', sortOrder: 'desc' })
       ]);
 
-      setMetrics(overviewRes.data?.metrics || {});
-      setCharts(overviewRes.data?.charts || {});
+      setDashboardData(dashRes.data || {});
       setRecentChallenges(challengesRes.data?.challenges || []);
     } catch (err) {
       console.error('Failed to load admin dashboard:', err);
@@ -96,16 +107,36 @@ const AdminDashboardPage = () => {
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+
+    // Socket.IO real-time sync
+    const socket = socketService.connect(user?._id || user?.id);
+    if (socket) {
+      const handleReload = () => loadDashboard();
+      socket.on('challenge:submitted', handleReload);
+      socket.on('challenge:analyzed', handleReload);
+      socket.on('challenge:updated', handleReload);
+      socket.on('challenge:assigned', handleReload);
+      socket.on('project:updated', handleReload);
+      socket.on('project:created', handleReload);
+
+      return () => {
+        socket.off('challenge:submitted', handleReload);
+        socket.off('challenge:analyzed', handleReload);
+        socket.off('challenge:updated', handleReload);
+        socket.off('challenge:assigned', handleReload);
+        socket.off('project:updated', handleReload);
+        socket.off('project:created', handleReload);
+      };
+    }
+  }, [user]);
 
   // Quick Action: Validate Challenge
   const handleValidate = async (challenge) => {
     try {
-      await adminService.updateChallengeStatus(
-        challenge._id,
-        'VALIDATED',
-        'Validated by Delhi State Innovation Council nodal cell'
-      );
+      await adminService.reviewChallenge(challenge._id, {
+        action: 'VALIDATED',
+        reason: 'Verified and approved by Delhi State Administration'
+      });
       loadDashboard();
     } catch (err) {
       alert(err.message || 'Failed to validate challenge');
@@ -121,18 +152,21 @@ const AdminDashboardPage = () => {
     if (!reason) return;
 
     try {
-      await adminService.updateChallengeStatus(challenge._id, 'REJECTED', reason);
+      await adminService.reviewChallenge(challenge._id, {
+        action: 'REJECTED',
+        reason
+      });
       loadDashboard();
     } catch (err) {
       alert(err.message || 'Failed to reject challenge');
     }
   };
 
-  if (loading) {
+  if (loading && !dashboardData) {
     return <LoadingState message="Connecting to Delhi State Innovation Registry & calculating live analytics..." />;
   }
 
-  if (error && !metrics?.totalChallenges) {
+  if (error && !dashboardData?.metrics) {
     return (
       <div className="py-12">
         <ErrorState
@@ -145,6 +179,13 @@ const AdminDashboardPage = () => {
     );
   }
 
+  const metrics = dashboardData?.metrics || {};
+  const trends = dashboardData?.trends || [];
+  const categoryData = dashboardData?.challengesByCategory || [];
+  const priorityData = dashboardData?.priorityDistribution || [];
+  const projectStatusData = dashboardData?.projectStatus || [];
+  const recentActivity = dashboardData?.recentActivity || [];
+
   const formatDate = (dateString) => {
     if (!dateString) return '--';
     return new Date(dateString).toLocaleDateString('en-IN', {
@@ -154,20 +195,29 @@ const AdminDashboardPage = () => {
     });
   };
 
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return '';
+    const diff = (new Date() - new Date(dateString)) / 1000;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-serif">
       {/* Top Welcome & Operational Banner */}
-      <div className="bg-white border border-gov-border rounded-sm p-6 shadow-gov-card flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-gov-border rounded-xs p-6 shadow-gov-card flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2 text-xs font-serif text-gov-navy font-bold uppercase tracking-wider mb-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>GNCTD State Administration &bull; {user?.name || 'Dr. Vivek Saxena'}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-gov-navy leading-tight">
             Government Oversight & Challenge Allocation Console
           </h1>
           <p className="text-xs font-serif text-gov-text-secondary mt-1 max-w-3xl leading-relaxed">
-            Monitor community problem statements across Delhi's 11 districts, screen validation pipelines, coordinate academic university labs, and track municipal field deployments.
+            Monitor community problem statements across Delhi, screen validation pipelines, coordinate academic university labs, and track municipal field deployments in real time.
           </p>
         </div>
 
@@ -177,14 +227,14 @@ const AdminDashboardPage = () => {
           </Button>
           <Link to="/admin/validation-queue">
             <Button variant="primary" size="sm">
-              Review Queue ({metrics?.pendingValidation || 0})
+              Review Queue ({metrics.pendingValidation || 0})
             </Button>
           </Link>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs font-serif rounded-sm flex items-center justify-between">
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs font-serif rounded-xs flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
@@ -195,31 +245,21 @@ const AdminDashboardPage = () => {
         </div>
       )}
 
-      {/* 8 Metric Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 7 Required Metric Cards (per Section 1 Specs) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <MetricCard
           title="Total Challenges"
-          value={metrics?.totalChallenges || 0}
-          subtitle="All recorded Delhi statements"
+          value={metrics.totalChallenges || 0}
+          subtitle="Delhi community submissions"
           icon={FolderKanban}
           accent="navy"
           onClick={() => navigate('/admin/challenges')}
         />
 
         <MetricCard
-          title="New Submissions"
-          value={metrics?.newSubmissions || 0}
-          subtitle="Fresh citizen reports"
-          icon={FilePlus}
-          accent="amber"
-          badgeText="New"
-          onClick={() => navigate('/admin/challenges?status=SUBMITTED')}
-        />
-
-        <MetricCard
           title="Pending Validation"
-          value={metrics?.pendingValidation || 0}
-          subtitle="Awaiting nodal clearance"
+          value={metrics.pendingValidation || 0}
+          subtitle="Awaiting administrative review"
           icon={Clock}
           accent="maroon"
           badgeText="Queue"
@@ -227,35 +267,35 @@ const AdminDashboardPage = () => {
         />
 
         <MetricCard
-          title="Validated"
-          value={metrics?.validated || 0}
-          subtitle="Ready for university cohort"
+          title="Validated Challenges"
+          value={metrics.validatedChallenges || 0}
+          subtitle="Approved for allocation"
           icon={CheckCircle2}
           accent="blue"
           onClick={() => navigate('/admin/challenges?status=VALIDATED')}
         />
 
         <MetricCard
-          title="In Progress"
-          value={metrics?.inProgress || 0}
-          subtitle="Active university engineering"
+          title="Active Projects"
+          value={metrics.activeProjects || 0}
+          subtitle="Engineering prototypes"
           icon={TrendingUp}
           accent="indigo"
-          onClick={() => navigate('/admin/challenges?status=IN_PROGRESS')}
+          onClick={() => navigate('/admin/projects')}
         />
 
         <MetricCard
-          title="Resolved"
-          value={metrics?.resolved || 0}
-          subtitle="Successfully deployed in field"
+          title="Completed Projects"
+          value={metrics.completedProjects || 0}
+          subtitle="Field deployed solutions"
           icon={Award}
           accent="emerald"
-          onClick={() => navigate('/admin/challenges?status=RESOLVED')}
+          onClick={() => navigate('/admin/projects?stage=COMPLETED')}
         />
 
         <MetricCard
           title="Universities"
-          value={metrics?.totalUniversities || 0}
+          value={metrics.universities || 0}
           subtitle="Partner research institutions"
           icon={GraduationCap}
           accent="purple"
@@ -264,151 +304,26 @@ const AdminDashboardPage = () => {
 
         <MetricCard
           title="Industry Partners"
-          value={metrics?.totalIndustryPartners || 0}
-          subtitle="Corporate sponsors & CSR"
+          value={metrics.industryPartners || 0}
+          subtitle="Corporate & startup co-sponsors"
           icon={Building2}
           accent="cyan"
           onClick={() => navigate('/admin/industry-partners')}
         />
       </div>
 
-      {/* 4 Recharts Visual Charts Grid */}
+      {/* 4 Recharts Analytics Grid (per Section 1 Specs) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Challenges by Category */}
-        <ChartCard
-          accent="navy"
-          title="Challenges by Category"
-          subtitle="Distribution across 12 civic problem sectors in Delhi"
-          badge="Live Aggregate"
-        >
-          {charts?.byCategory && charts.byCategory.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={charts.byCategory}
-                layout="vertical"
-                margin={{ top: 10, right: 20, left: 60, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} />
-                <XAxis type="number" tick={{ fontSize: 11, fontFamily: 'Georgia' }} />
-                <YAxis
-                  type="category"
-                  dataKey="category"
-                  tick={{ fontSize: 11, fontFamily: 'Georgia' }}
-                  width={110}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #cbd5e1',
-                    fontFamily: 'Georgia',
-                    fontSize: 12
-                  }}
-                />
-                <Bar dataKey="count" name="Challenges" fill="#7a1113" radius={[0, 2, 2, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs font-serif text-gov-text-muted">No category data recorded</p>
-          )}
-        </ChartCard>
-
-        {/* Chart 2: Challenges by District */}
+        {/* Chart 1: Challenge Trends */}
         <ChartCard
           accent="maroon"
-          title="Challenges by District"
-          subtitle="Civic problem volume across Delhi's 11 administrative zones"
-          badge="District Level"
+          title="Challenge Trends (Past 6 Months)"
+          subtitle="Trajectory of citizen challenge submissions across Delhi"
+          badge="Live Monthly Submissions"
         >
-          {charts?.byDistrict && charts.byDistrict.length > 0 ? (
+          {trends && trends.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={charts.byDistrict}
-                margin={{ top: 10, right: 10, left: -20, bottom: 45 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                <XAxis
-                  dataKey="shortName"
-                  angle={-45}
-                  textAnchor="end"
-                  interval={0}
-                  tick={{ fontSize: 10, fontFamily: 'Georgia' }}
-                />
-                <YAxis tick={{ fontSize: 11, fontFamily: 'Georgia' }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #cbd5e1',
-                    fontFamily: 'Georgia',
-                    fontSize: 12
-                  }}
-                  formatter={(val, name, item) => [`${val} Challenges`, item.payload.district]}
-                />
-                <Bar dataKey="count" name="Challenges" fill="#142a45" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs font-serif text-gov-text-muted">No district data recorded</p>
-          )}
-        </ChartCard>
-
-        {/* Chart 3: Challenges by Status */}
-        <ChartCard
-          accent="navy"
-          title="Challenges by Lifecycle Status"
-          subtitle="Active pipeline progression from submission to resolution"
-          badge="Lifecycle"
-        >
-          {charts?.byStatus && charts.byStatus.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={charts.byStatus}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="count"
-                  nameKey="status"
-                  label={({ name, percent }) => `${name.replace('_', ' ')} (${(percent * 100).toFixed(0)}%)`}
-                  labelLine={false}
-                >
-                  {charts.byStatus.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={STATUS_COLORS[entry.status] || PIE_COLORS[index % PIE_COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #cbd5e1',
-                    fontFamily: 'Georgia',
-                    fontSize: 12
-                  }}
-                  formatter={(val, name) => [`${val} Challenges`, name.replace('_', ' ')]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs font-serif text-gov-text-muted">No status data recorded</p>
-          )}
-        </ChartCard>
-
-        {/* Chart 4: Monthly Challenge Submissions */}
-        <ChartCard
-          accent="maroon"
-          title="Monthly Challenge Submissions"
-          subtitle="Trajectory of civic issue reports over recent months"
-          badge="Trend"
-        >
-          {charts?.monthlySubmissions && charts.monthlySubmissions.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart
-                data={charts.monthlySubmissions}
-                margin={{ top: 10, right: 15, left: -20, bottom: 5 }}
-              >
+              <AreaChart data={trends} margin={{ top: 10, right: 15, left: -20, bottom: 5 }}>
                 <defs>
                   <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#7a1113" stopOpacity={0.4} />
@@ -438,20 +353,180 @@ const AdminDashboardPage = () => {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-xs font-serif text-gov-text-muted">No monthly trend data recorded</p>
+            <p className="text-xs font-serif text-gov-text-muted">No trend data available</p>
+          )}
+        </ChartCard>
+
+        {/* Chart 2: Challenges by Category */}
+        <ChartCard
+          accent="navy"
+          title="Challenges by Category"
+          subtitle="Distribution of civic problem areas in Delhi"
+          badge="Category Breakdown"
+        >
+          {categoryData && categoryData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={categoryData} layout="vertical" margin={{ top: 10, right: 20, left: 60, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} />
+                <XAxis type="number" tick={{ fontSize: 11, fontFamily: 'Georgia' }} allowDecimals={false} />
+                <YAxis type="category" dataKey="category" tick={{ fontSize: 10, fontFamily: 'Georgia' }} width={120} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #cbd5e1',
+                    fontFamily: 'Georgia',
+                    fontSize: 12
+                  }}
+                />
+                <Bar dataKey="count" name="Challenges" fill="#142a45" radius={[0, 2, 2, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-xs font-serif text-gov-text-muted">No category data recorded</p>
+          )}
+        </ChartCard>
+
+        {/* Chart 3: Challenge Priority Distribution */}
+        <ChartCard
+          accent="amber"
+          title="Challenge Priority Distribution"
+          subtitle="Civic severity & urgency classification"
+          badge="Priority Levels"
+        >
+          {priorityData && priorityData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={priorityData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                <XAxis dataKey="priority" tick={{ fontSize: 11, fontFamily: 'Georgia' }} />
+                <YAxis tick={{ fontSize: 11, fontFamily: 'Georgia' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #cbd5e1',
+                    fontFamily: 'Georgia',
+                    fontSize: 12
+                  }}
+                />
+                <Bar dataKey="count" name="Challenges" fill="#b45309" radius={[2, 2, 0, 0]}>
+                  {priorityData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={PRIORITY_COLORS[entry.priority] || PIE_COLORS[index % PIE_COLORS.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-xs font-serif text-gov-text-muted">No priority records found</p>
+          )}
+        </ChartCard>
+
+        {/* Chart 4: Project Status */}
+        <ChartCard
+          accent="emerald"
+          title="Active Projects by Lifecycle Stage"
+          subtitle="Prototyping, testing, and deployment stages"
+          badge="Project Status"
+        >
+          {projectStatusData && projectStatusData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={projectStatusData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                <XAxis
+                  dataKey="status"
+                  angle={-25}
+                  textAnchor="end"
+                  tick={{ fontSize: 10, fontFamily: 'Georgia' }}
+                />
+                <YAxis tick={{ fontSize: 11, fontFamily: 'Georgia' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #cbd5e1',
+                    fontFamily: 'Georgia',
+                    fontSize: 12
+                  }}
+                />
+                <Bar dataKey="count" name="Projects" fill="#059669" radius={[2, 2, 0, 0]}>
+                  {projectStatusData.map((entry, index) => (
+                    <Cell
+                      key={`proj-${index}`}
+                      fill={STATUS_COLORS[entry.status] || '#059669'}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-gov-text-muted">
+              <Briefcase className="w-8 h-8 text-gov-text-muted mb-2 opacity-50" />
+              <p className="text-xs font-serif">Validated challenges will populate project lifecycle stages here once assigned to university cohorts.</p>
+            </div>
           )}
         </ChartCard>
       </div>
 
+      {/* Recent Activity Section (per Section 1 Specs) */}
+      <Card
+        accent="navy"
+        title="Recent State Administrative Activity"
+        subtitle="Chronological audit records of validations, university assignments, and council decisions"
+        headerAction={
+          <span className="text-[10px] text-gov-text-muted uppercase tracking-wider flex items-center space-x-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Audit Trail Verified</span>
+          </span>
+        }
+      >
+        {recentActivity && recentActivity.length > 0 ? (
+          <div className="divide-y divide-gov-border">
+            {recentActivity.map((act) => (
+              <div key={act._id} className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs">
+                <div className="flex items-start space-x-3">
+                  <div className="w-7 h-7 rounded-full bg-gov-sand-100 flex items-center justify-center text-gov-navy flex-shrink-0 mt-0.5">
+                    <Activity className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-gov-navy">{act.userName || act.user?.name || 'Council Admin'}</span>
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-xs bg-gov-sand-200 text-gov-navy">
+                        {act.userRole || act.user?.role || 'ADMIN'}
+                      </span>
+                      <span className="text-gov-text-muted text-[11px]">&bull; {act.action}</span>
+                    </div>
+
+                    <p className="text-xs text-gov-text-secondary mt-0.5 leading-snug">
+                      {act.challenge && (
+                        <strong className="text-gov-maroon mr-1">
+                          [{act.challenge.code || 'CHALLENGE'}]:
+                        </strong>
+                      )}
+                      {act.comment || 'Administrative action logged to council records.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right flex-shrink-0 text-[11px] text-gov-text-muted font-mono">
+                  {formatTimeAgo(act.timestamp)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs font-serif text-gov-text-muted py-4">No recent administrative activities logged yet.</p>
+        )}
+      </Card>
+
       {/* Recent Submissions Table with Action Controls */}
       <Card
         accent="navy"
-        title="Recent Submissions & Administrative Action Workbench"
-        subtitle="Review latest community issues, validate feasibility, reject duplicates, or assign research labs"
+        title="Recent Citizen Challenge Submissions"
+        subtitle="Review community statements, screen AI intelligence, validate feasibility, or assign university labs"
         headerAction={
           <Link to="/admin/challenges">
             <Button variant="subtle" size="sm">
-              View All ({metrics?.totalChallenges || 0})
+              View All ({metrics.totalChallenges || 0})
             </Button>
           </Link>
         }

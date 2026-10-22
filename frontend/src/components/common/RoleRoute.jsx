@@ -16,7 +16,7 @@ const roleDashboardMap = {
 };
 
 const RoleRoute = ({ allowedRoles = [], children }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const userRole = (user?.role || '').toUpperCase();
   const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
@@ -49,12 +49,22 @@ const RoleRoute = ({ allowedRoles = [], children }) => {
           <div className="pt-4 border-t border-gov-border flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link to={userTargetDashboard} className="w-full sm:w-auto">
               <Button variant="primary" size="sm" fullWidth icon={Home}>
-                Go to My Assigned Dashboard ({userRole})
+                My Dashboard ({userRole})
               </Button>
             </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                window.location.href = `/login?role=${normalizedAllowed[0].toLowerCase()}`;
+              }}
+              className="w-full sm:w-auto px-3 py-1.5 text-xs font-serif font-bold text-gov-maroon hover:bg-gov-sand-100 rounded-sm border border-gov-border cursor-pointer transition-colors"
+            >
+              Sign In as {normalizedAllowed[0]} &rarr;
+            </button>
             <Link to="/select-role" className="w-full sm:w-auto">
               <Button variant="subtle" size="sm" fullWidth icon={ArrowLeft}>
-                Switch Portal Role
+                Switch Portal
               </Button>
             </Link>
           </div>

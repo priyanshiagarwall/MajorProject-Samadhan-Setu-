@@ -139,7 +139,7 @@ const RoleSelectionPage = () => {
               <div className="text-xs font-bold text-gov-navy uppercase">Phase 2</div>
               <h4 className="font-bold text-gov-navy">Government Validation</h4>
               <p className="text-xs text-gov-text-secondary leading-relaxed">
-                Nodal officers verify reports, filter duplicates with AI semantic models, and prioritize challenges.
+                Administrators verify reports, filter duplicates with AI semantic models, and prioritize challenges.
               </p>
             </div>
 

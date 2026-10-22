@@ -18,7 +18,7 @@ const VALID_TRANSITIONS = {
   IN_PROGRESS: ['SOLUTION_PROPOSED', 'PILOT_TESTING', 'RESOLVED', 'ASSIGNED'],
   SOLUTION_PROPOSED: ['PILOT_TESTING', 'IN_PROGRESS', 'RESOLVED'],
   PILOT_TESTING: ['RESOLVED', 'IN_PROGRESS'],
-  RESOLVED: ['IN_PROGRESS'], // Allow reopening if required by nodal authority
+  RESOLVED: ['IN_PROGRESS'], // Allow reopening if required by administration
   REJECTED: ['UNDER_REVIEW'], // Allow appeal / re-evaluation
   DUPLICATE: ['UNDER_REVIEW']
 };

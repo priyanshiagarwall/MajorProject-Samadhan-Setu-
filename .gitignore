@@ -9,4 +9,4 @@ __pycache__/
 *.py[cod]
 
 # Local database files
-backend/data/db/
+backend/data/

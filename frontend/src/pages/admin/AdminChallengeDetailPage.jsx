@@ -627,7 +627,7 @@ const AdminChallengeDetailPage = () => {
                   challenge.internalNotes.map((note, idx) => (
                     <div key={idx} className="p-3 bg-gov-sand-50 rounded-xs border border-gov-border space-y-1">
                       <div className="flex items-center justify-between text-[10px] text-gov-text-muted">
-                        <span className="font-bold text-gov-navy">{note.authorName || 'Nodal Officer'}</span>
+                        <span className="font-bold text-gov-navy">{note.authorName || 'Administrator'}</span>
                         <span>{formatDate(note.createdAt)}</span>
                       </div>
                       <p className="text-gov-text-secondary leading-snug">{note.note}</p>

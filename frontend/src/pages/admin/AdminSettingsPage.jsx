@@ -56,7 +56,7 @@ const AdminSettingsPage = () => {
         sessionStorage.setItem('delhi_portal_user', JSON.stringify(updated));
       }
 
-      setSuccessMsg('Administrative nodal credentials updated in GNCTD directory.');
+      setSuccessMsg('Administrative profile updated successfully.');
       setIsEditing(false);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
@@ -73,7 +73,7 @@ const AdminSettingsPage = () => {
           Administrative Identity & Settings
         </h1>
         <p className="text-xs text-gov-text-secondary mt-1">
-          Government nodal officer credentials and state clearance authorization details.
+          Administrative officer credentials and system configuration details.
         </p>
       </div>
 
@@ -107,7 +107,7 @@ const AdminSettingsPage = () => {
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
               <h2 className="text-xl font-bold text-gov-navy">{name || user?.name}</h2>
               <Badge variant="navy">STATE ADMIN / IAS</Badge>
-              <Badge variant="gold">Nodal Authority</Badge>
+              <Badge variant="gold">Administrator</Badge>
             </div>
 
             <p className="text-xs text-gov-text-secondary">

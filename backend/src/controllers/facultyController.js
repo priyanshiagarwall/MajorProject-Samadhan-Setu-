@@ -12,9 +12,43 @@ const getFaculty = async (req, res, next) => {
     if (req.user.role === 'UNIVERSITY') {
       filter.university = req.user.id;
     } else if (req.user.role === 'FACULTY') {
-      // If caller is faculty user, can filter to themselves or their university
-      const f = await Faculty.findOne({ user: req.user.id });
-      if (f) filter.university = f.university;
+      let f = await Faculty.findOne({ user: req.user.id });
+      if (!f) {
+        f = await Faculty.findOne({ email: req.user.email.toLowerCase() });
+        if (f) {
+          f.user = req.user.id;
+          await f.save();
+        } else {
+          // Auto-provision faculty mentor record
+          let universityId;
+          if (req.user.organization) {
+            const matchedUni = await User.findOne({
+              role: 'UNIVERSITY',
+              $or: [
+                { name: { $regex: req.user.organization, $options: 'i' } },
+                { organization: { $regex: req.user.organization, $options: 'i' } }
+              ]
+            });
+            if (matchedUni) universityId = matchedUni._id;
+          }
+          if (!universityId) {
+            const defaultUni = await User.findOne({ role: 'UNIVERSITY' });
+            universityId = defaultUni ? defaultUni._id : req.user.id;
+          }
+
+          f = await Faculty.create({
+            university: universityId,
+            user: req.user.id,
+            name: req.user.name,
+            email: req.user.email.toLowerCase(),
+            department: req.user.organization ? `${req.user.organization} Engineering` : 'Department of Engineering & Technology',
+            specialization: 'Applied Engineering & Societal Innovation',
+            experience: '5+ Years',
+            expertise: ['Academic Supervision', 'Prototype Validation', 'Societal Solutions']
+          });
+        }
+      }
+      if (f && f.university) filter.university = f.university;
     }
 
     const faculty = await Faculty.find(filter)
@@ -22,6 +56,62 @@ const getFaculty = async (req, res, next) => {
       .sort({ name: 1 });
 
     return successResponse(res, 'Faculty members retrieved successfully', { faculty });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get profile for authenticated Faculty member
+ * GET /api/faculty/profile
+ */
+const getProfile = async (req, res, next) => {
+  try {
+    let faculty = await Faculty.findOne({ user: req.user.id })
+      .populate('university', 'name organization district')
+      .populate('assignedProjects', 'title status challengeId');
+
+    if (!faculty) {
+      faculty = await Faculty.findOne({ email: req.user.email.toLowerCase() })
+        .populate('university', 'name organization district')
+        .populate('assignedProjects', 'title status challengeId');
+      if (faculty) {
+        faculty.user = req.user.id;
+        await faculty.save();
+      }
+    }
+
+    if (!faculty) {
+      // Auto-provision profile
+      let universityId;
+      if (req.user.organization) {
+        const matchedUni = await User.findOne({
+          role: 'UNIVERSITY',
+          $or: [
+            { name: { $regex: req.user.organization, $options: 'i' } },
+            { organization: { $regex: req.user.organization, $options: 'i' } }
+          ]
+        });
+        if (matchedUni) universityId = matchedUni._id;
+      }
+      if (!universityId) {
+        const defaultUni = await User.findOne({ role: 'UNIVERSITY' });
+        universityId = defaultUni ? defaultUni._id : req.user.id;
+      }
+
+      faculty = await Faculty.create({
+        university: universityId,
+        user: req.user.id,
+        name: req.user.name,
+        email: req.user.email.toLowerCase(),
+        department: req.user.organization ? `${req.user.organization} Engineering` : 'Department of Engineering & Technology',
+        specialization: 'Applied Engineering & Societal Innovation',
+        experience: '5+ Years',
+        expertise: ['Academic Supervision', 'Prototype Validation', 'Societal Solutions']
+      });
+    }
+
+    return successResponse(res, 'Faculty profile retrieved successfully', { faculty });
   } catch (error) {
     next(error);
   }
@@ -133,6 +223,7 @@ const removeFaculty = async (req, res, next) => {
 
 module.exports = {
   getFaculty,
+  getProfile,
   addFaculty,
   updateFaculty,
   removeFaculty

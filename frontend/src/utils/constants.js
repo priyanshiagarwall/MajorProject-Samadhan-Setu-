@@ -69,7 +69,7 @@ export const ROLES = [
     id: "admin",
     key: "government",
     title: "Admin / Government",
-    badgeText: "Nodal Authority",
+    badgeText: "Administrator",
     description: "Validate challenges, coordinate institutions and monitor societal innovation projects.",
     path: "/admin",
     loginPath: "/login?role=admin",
@@ -136,6 +136,23 @@ export const ROLES = [
     actionLabel: "Access Industry Portal"
   }
 ];
+
+export const normalizeRoleKey = (role) => {
+  if (!role) return 'client';
+  const r = role.toString().trim().toLowerCase();
+  if (['client', 'citizen', 'civic'].includes(r)) return 'client';
+  if (['admin', 'government', 'govt', 'nodal'].includes(r)) return 'admin';
+  if (['university', 'academic', 'institute', 'college'].includes(r)) return 'university';
+  if (['faculty', 'mentor', 'professor', 'supervisor'].includes(r)) return 'faculty';
+  if (['student', 'solution-provider', 'innovator'].includes(r)) return 'student';
+  if (['industry', 'enterprise', 'startup', 'corporate'].includes(r)) return 'industry';
+  return r;
+};
+
+export const getRoleConfig = (roleOrKey) => {
+  const normalizedKey = normalizeRoleKey(roleOrKey);
+  return ROLES.find((r) => r.id === normalizedKey || r.key === normalizedKey) || ROLES[0];
+};
 
 export const NAV_LINKS = [
   { label: "Home / Roles", path: "/select-role" },
