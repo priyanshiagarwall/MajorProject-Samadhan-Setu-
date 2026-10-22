@@ -5,8 +5,67 @@ const StudentInterest = require('../models/StudentInterest');
 const Project = require('../models/Project');
 const Team = require('../models/Team');
 const mongoose = require('mongoose');
+const aiService = require('../services/aiService');
 const { dispatchNotification } = require('../services/notificationDispatcher');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
+
+/**
+ * Background asynchronous AI analysis runner
+ */
+const runBackgroundAIAnalysis = async (challengeId) => {
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge) return;
+
+    const existingChallenges = await Challenge.find({
+      _id: { $ne: challenge._id }
+    }).select('_id code title description').limit(100);
+
+    const aiResults = await aiService.analyzeChallenge(challenge, existingChallenges);
+
+    challenge.aiClassification = aiResults.aiClassification;
+    challenge.aiPriority = aiResults.aiPriority;
+    challenge.aiDuplicateScore = aiResults.aiDuplicateScore || 0;
+    challenge.aiDuplicates = aiResults.aiDuplicates || [];
+    challenge.aiSummary = aiResults.aiSummary || {};
+
+    await challenge.save();
+
+    // Broadcast AI analysis completion via Socket.IO
+    try {
+      const { getIO } = require('../services/socketService');
+      const io = getIO();
+      if (io) {
+        io.emit('challenge:analyzed', {
+          challengeId: challenge._id,
+          code: challenge.code,
+          title: challenge.title,
+          aiClassification: challenge.aiClassification,
+          aiPriority: challenge.aiPriority,
+          aiDuplicateScore: challenge.aiDuplicateScore
+        });
+      }
+    } catch (sockErr) {
+      // safe fallback
+    }
+
+    // Notify admins that AI analysis is complete and challenge is ready for review
+    const admins = await User.find({ role: 'ADMIN' });
+    for (const admin of admins) {
+      await dispatchNotification({
+        recipient: admin._id,
+        sender: challenge.submittedBy,
+        type: 'AI_ANALYSIS_COMPLETED',
+        title: 'AI Problem Intelligence Completed',
+        message: `AI analysis completed for [${challenge.code}] "${challenge.title}". Category: ${challenge.aiClassification?.category || challenge.category}, Priority: ${challenge.aiPriority?.recommendedPriority || 'MEDIUM'}.`,
+        relatedEntity: 'Challenge',
+        relatedEntityId: challenge._id
+      });
+    }
+  } catch (err) {
+    console.warn(`[AI Background Error] Failed analyzing challenge ${challengeId}:`, err.message);
+  }
+};
 
 /**
  * Create a new civic challenge
@@ -21,8 +80,13 @@ const createChallenge = async (req, res, next) => {
       district,
       location,
       priority,
+      urgency,
+      severity,
+      impact,
       attachments,
-      tags
+      evidence,
+      tags,
+      expectedOutcome
     } = req.body;
 
     if (!title || !description || !category || !district) {
@@ -46,8 +110,8 @@ const createChallenge = async (req, res, next) => {
     }
 
     const challenge = await Challenge.create({
-      title,
-      description,
+      title: title.trim(),
+      description: description.trim(),
       category,
       district,
       location: location || {
@@ -56,9 +120,20 @@ const createChallenge = async (req, res, next) => {
         coordinates: { lat: 28.6139, lng: 77.2090 }
       },
       priority: priority || 'medium',
+      urgency: urgency || 'medium',
+      severity: severity || 'moderate',
+      impact: impact || 'Local community residents and commuters affected',
+      expectedOutcome: expectedOutcome || '',
       submittedBy: req.user.id,
-      attachments: attachments || [],
+      evidence: evidence || attachments || [],
       tags: tags || [],
+      timeline: [
+        {
+          status: 'SUBMITTED',
+          label: 'Citizen Problem Report Lodged',
+          comment: 'Challenge recorded on Delhi Societal Innovation public registry and queued for AI analysis.'
+        }
+      ],
       milestones: [
         { title: 'Community Problem Verification', completed: false },
         { title: 'University Research & Team Assignment', completed: false },
@@ -67,7 +142,12 @@ const createChallenge = async (req, res, next) => {
       ]
     });
 
-    const populated = await Challenge.findById(challenge._id).populate('submittedBy', 'name email organization role');
+    const populated = await Challenge.findById(challenge._id).populate('submittedBy', 'name email phone organization role');
+
+    // Trigger asynchronous AI analysis in background (does NOT block citizen submission)
+    runBackgroundAIAnalysis(challenge._id).catch((e) =>
+      console.warn('[AI Trigger Warning]', e.message)
+    );
 
     // Notify administrators of new societal challenge
     try {

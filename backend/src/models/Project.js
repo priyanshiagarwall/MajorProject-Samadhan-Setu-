@@ -640,6 +640,9 @@ const projectSchema = new mongoose.Schema(
       ref: 'Team'
     },
     milestones: [milestoneSchema],
+    deadline: {
+      type: Date
+    },
     overallProgress: {
       type: Number,
       min: 0,
@@ -649,17 +652,22 @@ const projectSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        'VALIDATION',
+        'ASSIGNMENT',
+        'SOLUTION_PROPOSAL',
+        'PROTOTYPE',
+        'PILOT_TESTING',
+        'IMPLEMENTATION',
+        'IMPACT_EVALUATION',
+        'COMPLETED',
         'CHALLENGE_ACCEPTED',
         'PROJECT_CREATED',
         'PROPOSAL_SUBMITTED',
         'APPROVED',
         'RESEARCH',
-        'PROTOTYPE',
         'TESTING',
         'PILOT',
-        'VALIDATION',
-        'DEPLOYMENT',
-        'COMPLETED'
+        'DEPLOYMENT'
       ],
       default: 'PROJECT_CREATED'
     },
@@ -724,8 +732,26 @@ const projectSchema = new mongoose.Schema(
     testRecords: [testingRecordSchema]
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+projectSchema.virtual('stage').get(function () {
+  return this.status;
+});
+
+projectSchema.virtual('progress').get(function () {
+  return this.overallProgress;
+});
+
+projectSchema.virtual('university').get(function () {
+  return this.universityId;
+});
+
+projectSchema.virtual('challenge').get(function () {
+  return this.challengeId;
+});
 
 module.exports = mongoose.model('Project', projectSchema);

@@ -40,7 +40,7 @@ const evidenceSchema = new mongoose.Schema({
 const internalNoteSchema = new mongoose.Schema({
   note: { type: String, required: true },
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  authorName: { type: String, default: 'Nodal Administrator' },
+  authorName: { type: String, default: 'Administrator' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -156,9 +156,21 @@ const challengeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
+    assignedDepartment: {
+      type: String,
+      default: ''
+    },
+    assignedFaculty: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Faculty'
+    },
     facultyLead: {
       name: { type: String, default: '' },
       department: { type: String, default: '' }
+    },
+    assignedStudentTeam: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team'
     },
     assignedStudents: [
       {
@@ -170,9 +182,17 @@ const challengeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
+    assignedIndustry: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
     assignedProject: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project'
+    },
+    expectedOutcome: {
+      type: String,
+      default: ''
     },
     sponsoredAmount: {
       type: Number,
@@ -247,8 +267,43 @@ const challengeSchema = new mongoose.Schema(
     ]
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+// Virtual aliases to support standardized naming conventions
+challengeSchema.virtual('challengeId').get(function () {
+  return this.code;
+});
+
+challengeSchema.virtual('statusHistory').get(function () {
+  return this.timeline;
+});
+
+challengeSchema.virtual('attachments').get(function () {
+  return this.evidence;
+});
+
+challengeSchema.virtual('citizenUrgency').get(function () {
+  return this.urgency;
+});
+
+challengeSchema.virtual('citizenSeverity').get(function () {
+  return this.severity;
+});
+
+challengeSchema.virtual('aiSimilarChallenges').get(function () {
+  return this.aiDuplicates;
+});
+
+challengeSchema.virtual('projectId').get(function () {
+  return this.assignedProject;
+});
+
+challengeSchema.virtual('aiPriorityConfidence').get(function () {
+  return this.aiPriority?.confidence;
+});
 
 module.exports = mongoose.model('Challenge', challengeSchema);

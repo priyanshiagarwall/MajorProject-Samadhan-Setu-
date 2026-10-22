@@ -7,6 +7,7 @@ import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
+import SubmitChallengeModal from '../components/challenge/SubmitChallengeModal';
 import { problemService } from '../services/problemService';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -28,6 +29,8 @@ const CitizenDashboardPage = () => {
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -90,13 +93,31 @@ const CitizenDashboardPage = () => {
           <Button variant="subtle" size="sm" onClick={loadDashboardData} icon={RefreshCw}>
             Refresh
           </Button>
-          <Link to="/client/submit">
-            <Button variant="primary" size="sm" icon={PlusCircle}>
-              Submit a Challenge
-            </Button>
-          </Link>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={PlusCircle}
+            onClick={() => setIsSubmitModalOpen(true)}
+          >
+            Submit a Problem
+          </Button>
         </div>
       </div>
+
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-serif rounded-sm flex items-center justify-between animate-in fade-in duration-150">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span className="font-semibold">{successMessage}</span>
+          </div>
+          <button
+            onClick={() => setSuccessMessage('')}
+            className="text-xs text-emerald-700 hover:underline font-bold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs font-serif rounded-sm flex items-center justify-between">
@@ -124,7 +145,7 @@ const CitizenDashboardPage = () => {
         <DashboardCard
           title="Under Review"
           value={stats?.underReview || 0}
-          subtitle="Pending district nodal screening"
+          subtitle="Screening by state administration"
           icon={Clock}
           accent="amber"
           onClick={() => navigate('/client/challenges?status=UNDER_REVIEW')}
@@ -187,6 +208,19 @@ const CitizenDashboardPage = () => {
           </Button>
         </Link>
       </div>
+
+      {/* Quick Problem Submission Modal */}
+      <SubmitChallengeModal
+        isOpen={isSubmitModalOpen}
+        onClose={() => setIsSubmitModalOpen(false)}
+        onSuccess={(newChallenge) => {
+          setIsSubmitModalOpen(false);
+          setSuccessMessage(
+            `Problem "${newChallenge?.title || 'Statement'}" registered successfully with code ${newChallenge?.code || 'DEL'}!`
+          );
+          loadDashboardData();
+        }}
+      />
     </div>
   );
 };

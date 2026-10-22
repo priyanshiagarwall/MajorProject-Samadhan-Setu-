@@ -52,7 +52,7 @@ const AdminValidationQueuePage = () => {
       await adminService.updateChallengeStatus(
         challenge._id,
         'VALIDATED',
-        'Validated by Delhi State Innovation Council nodal cell'
+        'Validated by Delhi State Administration'
       );
       fetchQueue();
     } catch (err) {
@@ -88,7 +88,7 @@ const AdminValidationQueuePage = () => {
         <div>
           <div className="flex items-center space-x-2 text-xs text-amber-700 font-bold uppercase tracking-wider mb-1">
             <CheckSquare className="w-4 h-4" />
-            <span>Nodal Quality Screening Pipeline</span>
+            <span>Validation & Screening Pipeline</span>
           </div>
           <h1 className="text-2xl font-bold text-gov-navy">
             Challenge Validation Queue ({queue.length} Pending)

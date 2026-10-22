@@ -17,66 +17,13 @@ import {
   Info
 } from 'lucide-react';
 
+import SubmitChallengePage from './SubmitChallengePage';
+
 /**
- * Submit a Challenge Launchpad
- * (Complete submission form is scheduled for next task)
+ * Submit a Challenge Page
  */
 export const SubmitLaunchpadPage = () => {
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="bg-gov-maroon-surface border border-gov-maroon-border p-5 rounded-sm flex items-start space-x-3.5">
-        <Info className="w-6 h-6 text-gov-maroon flex-shrink-0 mt-0.5" />
-        <div>
-          <h2 className="text-base font-serif font-bold text-gov-maroon">
-            Submit a Community Challenge — Launchpad Notice
-          </h2>
-          <p className="text-xs font-serif text-gov-text-secondary mt-1 leading-relaxed">
-            The full-featured multi-step challenge submission wizard (with photo geo-tagging, satellite coordinate picking, and multi-agency routing) is being deployed in the upcoming task.
-          </p>
-        </div>
-      </div>
-
-      <Card
-        accent="maroon"
-        title="Civic Problem Statement Guidelines"
-        subtitle="Ensure your community report meets the GNCTD public innovation standards"
-      >
-        <div className="space-y-4 text-xs font-serif text-gov-text-secondary leading-relaxed">
-          <p>
-            Citizens of Delhi can submit grassroots challenges in 12 civic categories: <strong>Education, Healthcare, Agriculture, Water Management, Sanitation, Environment, Energy, Urban Infrastructure, Accessibility, Public Services, Rural Livelihoods, and Other</strong>.
-          </p>
-
-          <div className="border border-gov-border rounded-sm p-4 bg-gov-sand-50 space-y-2.5">
-            <h4 className="font-bold text-gov-navy text-sm">Essential Submission Checklist:</h4>
-            <ul className="space-y-2 list-disc pl-4 text-[11px]">
-              <li>
-                <strong>Geographical Coordinates:</strong> Provide landmark, ward number, and pin code within the National Capital Territory of Delhi.
-              </li>
-              <li>
-                <strong>Evidence Documentation:</strong> Upload photographs, water/air test logs, or survey notes proving persistent community disruption.
-              </li>
-              <li>
-                <strong>Quantified Impact:</strong> Estimate the number of impacted households, commuters, or commercial establishments.
-              </li>
-            </ul>
-          </div>
-
-          <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
-            <Link to="/client/challenges" className="w-full sm:w-auto">
-              <Button variant="primary" size="sm" fullWidth>
-                Review Existing Submissions
-              </Button>
-            </Link>
-            <Link to="/client" className="w-full sm:w-auto">
-              <Button variant="subtle" size="sm" fullWidth>
-                Return to Dashboard
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
+  return <SubmitChallengePage />;
 };
 
 /**

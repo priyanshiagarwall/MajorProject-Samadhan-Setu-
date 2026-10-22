@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getFaculty,
+  getProfile,
   addFaculty,
   updateFaculty,
   removeFaculty
@@ -10,6 +11,7 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
+router.get('/profile', getProfile);
 router.get('/', getFaculty);
 router.post('/', authorize('UNIVERSITY', 'ADMIN'), addFaculty);
 router.put('/:id', authorize('UNIVERSITY', 'ADMIN'), updateFaculty);

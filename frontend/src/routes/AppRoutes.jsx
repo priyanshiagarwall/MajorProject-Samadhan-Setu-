@@ -23,9 +23,9 @@ import CitizenDashboardPage from '../pages/CitizenDashboardPage';
 import ChallengeDetailPage from '../pages/ChallengeDetailPage';
 import MyChallengesPage from '../pages/MyChallengesPage';
 import ProfilePage from '../pages/ProfilePage';
+import SavedChallengesPage from '../pages/SavedChallengesPage';
+import SubmitChallengePage from '../pages/SubmitChallengePage';
 import {
-  SubmitLaunchpadPage,
-  SavedChallengesPage,
   NotificationsPage,
   HelpSupportPage
 } from '../pages/ClientPlaceholders';
@@ -35,15 +35,15 @@ import AdminDashboardPage from '../pages/AdminDashboardPage';
 import AdminChallengesPage from '../pages/admin/AdminChallengesPage';
 import AdminChallengeDetailPage from '../pages/admin/AdminChallengeDetailPage';
 import AdminValidationQueuePage from '../pages/admin/AdminValidationQueuePage';
+import AdminAssignmentsPage from '../pages/admin/AdminAssignmentsPage';
+import AdminProjectsPage from '../pages/admin/AdminProjectsPage';
 import AdminUniversitiesPage from '../pages/admin/AdminUniversitiesPage';
 import AdminIndustryPage from '../pages/admin/AdminIndustryPage';
+import AdminUsersPage from '../pages/admin/AdminUsersPage';
 import AdminAnalyticsPage from '../pages/admin/AdminAnalyticsPage';
 import AdminMapPage from '../pages/admin/AdminMapPage';
+import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
-import {
-  AdminProjectsPage,
-  AdminNotificationsPage
-} from '../pages/admin/AdminPlaceholders';
 
 // University Pages
 import UniversityDashboardPage from '../pages/university/UniversityDashboardPage';
@@ -117,12 +117,16 @@ const AppRoutes = () => {
         <Route index element={<CitizenDashboardPage />} />
         <Route path="challenges" element={<MyChallengesPage />} />
         <Route path="challenges/:id" element={<ChallengeDetailPage />} />
-        <Route path="submit" element={<SubmitLaunchpadPage />} />
+        <Route path="submit" element={<SubmitChallengePage />} />
         <Route path="saved" element={<SavedChallengesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="help" element={<HelpSupportPage />} />
       </Route>
+
+      {/* Citizen Route Alias */}
+      <Route path="/citizen/*" element={<Navigate to="/client" replace />} />
+      <Route path="/citizen" element={<Navigate to="/client" replace />} />
 
       {/* 2. Admin / Government Dedicated Workspace */}
       <Route
@@ -139,10 +143,12 @@ const AppRoutes = () => {
         <Route path="challenges" element={<AdminChallengesPage />} />
         <Route path="challenges/:id" element={<AdminChallengeDetailPage />} />
         <Route path="validation-queue" element={<AdminValidationQueuePage />} />
-        <Route path="universities" element={<AdminUniversitiesPage />} />
-        <Route path="industry-partners" element={<AdminIndustryPage />} />
+        <Route path="assignments" element={<AdminAssignmentsPage />} />
         <Route path="projects" element={<AdminProjectsPage />} />
         <Route path="projects/:id" element={<ProjectWorkspacePage />} />
+        <Route path="universities" element={<AdminUniversitiesPage />} />
+        <Route path="industry-partners" element={<AdminIndustryPage />} />
+        <Route path="users" element={<AdminUsersPage />} />
         <Route path="analytics" element={<AdminAnalyticsPage />} />
         <Route path="map" element={<AdminMapPage />} />
         <Route path="notifications" element={<AdminNotificationsPage />} />

@@ -23,8 +23,18 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!isAuthenticated) {
+    let targetRole = '';
+    const p = location.pathname;
+    if (p.startsWith('/client')) targetRole = 'client';
+    else if (p.startsWith('/admin')) targetRole = 'admin';
+    else if (p.startsWith('/university')) targetRole = 'university';
+    else if (p.startsWith('/faculty')) targetRole = 'faculty';
+    else if (p.startsWith('/student')) targetRole = 'student';
+    else if (p.startsWith('/industry')) targetRole = 'industry';
+
+    const loginUrl = targetRole ? `/login?role=${targetRole}` : '/login';
     // Redirect unauthenticated visitor to login, preserving intended destination
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to={loginUrl} state={{ from: location }} replace />;
   }
 
   return children ? children : <Outlet />;

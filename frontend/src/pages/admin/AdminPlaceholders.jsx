@@ -106,7 +106,7 @@ export const AdminNotificationsPage = () => {
     {
       id: 1,
       title: 'High-Priority Sanitation Report Lodged',
-      text: 'DEL-201 at Ghazipur Wholesale Mandi flagged as critical priority. Nodal inspection recommended.',
+      text: 'DEL-201 at Ghazipur Wholesale Mandi flagged as critical priority. Administrative inspection recommended.',
       time: '1 hour ago',
       level: 'critical'
     },

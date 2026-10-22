@@ -32,8 +32,8 @@ const SubmitChallengeModal = ({ isOpen, onClose, onSuccess }) => {
     defaultValues: {
       title: '',
       description: '',
-      category: 'Waste Management',
-      district: 'East Delhi',
+      category: 'Water Management',
+      district: 'Central Delhi',
       area: '',
       landmark: '',
       priority: 'medium'
@@ -50,39 +50,46 @@ const SubmitChallengeModal = ({ isOpen, onClose, onSuccess }) => {
       const coords = districtCoordinates[data.district] || { lat: 28.6139, lng: 77.2090 };
 
       const payload = {
-        title: data.title,
-        description: data.description,
+        title: data.title.trim(),
+        description: data.description.trim(),
         category: data.category,
         district: data.district,
         priority: data.priority,
         location: {
-          area: data.area,
-          landmark: data.landmark,
+          area: data.area?.trim() || '',
+          landmark: data.landmark?.trim() || '',
           coordinates: coords
         },
         tags: [data.category.toLowerCase().replace(/\s+/g, '-'), data.district.toLowerCase().replace(/\s+/g, '-')]
       };
 
-      await challengeService.createChallenge(payload);
+      const res = await challengeService.createChallenge(payload);
       reset();
-      onSuccess();
-      onClose();
+      if (onSuccess) onSuccess(res?.data?.challenge || res);
+      if (onClose) onClose();
     } catch (err) {
-      setSubmitError(err.message || 'Failed to submit problem report. Please ensure you are logged in.');
+      setSubmitError(
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to submit problem report. Please ensure you are logged in.'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const categories = [
-    'Waste Management',
-    'Air Quality & Pollution',
-    'Water Supply & Sanitation',
-    'Traffic & Public Transport',
-    'Public Health & Healthcare',
+    'Water Management',
+    'Sanitation',
     'Urban Infrastructure',
-    'Education & Literacy',
-    'Women Safety & Social Welfare',
+    'Environment',
+    'Healthcare',
+    'Education',
+    'Energy',
+    'Accessibility',
+    'Public Services',
+    'Agriculture',
+    'Rural Livelihoods',
     'Other'
   ];
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import DashboardHeader from '../components/dashboard/DashboardHeader';
-import DashboardSidebar from '../components/dashboard/DashboardSidebar';
+import Header from '../components/common/Header';
+import Sidebar from '../components/common/Sidebar';
 import Footer from '../components/common/Footer';
 import { Home, ChevronRight, ArrowLeft } from 'lucide-react';
 
@@ -24,7 +24,7 @@ const ClientLayout = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gov-sand-50 text-gov-text-primary font-serif">
-      <DashboardHeader onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+      <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
       {/* Sub-header Breadcrumb Strip */}
       <div className="bg-white border-b border-gov-border px-4 sm:px-6 py-2.5 flex items-center justify-between text-xs">
@@ -52,7 +52,7 @@ const ClientLayout = () => {
 
       {/* Body: Sidebar + Main Content */}
       <div className="flex-1 flex overflow-hidden max-w-7xl w-full mx-auto">
-        <DashboardSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <Outlet />

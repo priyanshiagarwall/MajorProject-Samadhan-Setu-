@@ -5,7 +5,7 @@ const auditLogSchema = new mongoose.Schema(
     challenge: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Challenge',
-      required: true
+      required: false
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -30,10 +30,17 @@ const auditLogSchema = new mongoose.Schema(
         'MARK_DUPLICATE',
         'CHANGE_PRIORITY',
         'ASSIGN_UNIVERSITY',
+        'ASSIGN_CHALLENGE',
         'ADD_NOTE',
         'STATUS_CHANGE',
         'CREATE_PROJECT',
-        'SUBMIT_PROPOSAL'
+        'SUBMIT_PROPOSAL',
+        'ACTIVATE_USER',
+        'DEACTIVATE_USER',
+        'ACTIVATE_UNIVERSITY',
+        'DEACTIVATE_UNIVERSITY',
+        'ACTIVATE_INDUSTRY',
+        'DEACTIVATE_INDUSTRY'
       ]
     },
     previousStatus: {
