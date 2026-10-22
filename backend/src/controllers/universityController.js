@@ -1,6 +1,10 @@
+const mongoose = require('mongoose');
 const University = require('../models/University');
 const User = require('../models/User');
 const Challenge = require('../models/Challenge');
+const Project = require('../models/Project');
+const Team = require('../models/Team');
+const Faculty = require('../models/Faculty');
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
@@ -33,6 +37,36 @@ const CATEGORY_EXPERTISE_MAP = {
   'Agriculture': ['Agriculture', 'IoT', 'Water Management'],
   'Public Services': ['Public Administration', 'AI/ML'],
   'Rural Livelihoods': ['Agriculture', 'Public Administration']
+};
+
+/**
+ * Helper to get user match identifiers (both string and ObjectId forms)
+ */
+const getUniversityUserMatches = (userId) => {
+  const matches = [userId ? userId.toString() : null];
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    matches.push(new mongoose.Types.ObjectId(userId));
+  }
+  return matches.filter(Boolean);
+};
+
+/**
+ * Shared filter for challenge eligibility in University Marketplace and Dashboard
+ * Strict Option A: Challenge must be VALIDATED, unassigned, and have an AI recommendation
+ * for this university that is not IGNORED.
+ */
+const buildUniversityEligibilityFilter = (userId) => {
+  const userMatches = getUniversityUserMatches(userId);
+  return {
+    status: 'VALIDATED',
+    assignedUniversity: null,
+    aiRecommendedUniversities: {
+      $elemMatch: {
+        universityId: { $in: userMatches },
+        status: { $ne: 'IGNORED' }
+      }
+    }
+  };
 };
 
 /**
@@ -94,8 +128,8 @@ const getProfile = async (req, res, next) => {
             email: 'radhika.sen@dtu.ac.in'
           }
         ],
-        studentTeamsCount: 14,
-        facultyMentorsCount: 8
+        studentTeamsCount: 0,
+        facultyMentorsCount: 0
       });
     }
 
@@ -173,15 +207,63 @@ const getChallenges = async (req, res, next) => {
     const university = await University.findOne({ user: userId });
     const uniExpertise = university?.expertise || [];
 
-    // 1. Available Challenges in Marketplace: VALIDATED & Unassigned
-    const availableRaw = await Challenge.find({
-      status: 'VALIDATED',
-      assignedUniversity: null
-    })
-      .populate('submittedBy', 'name email organization district')
-      .sort({ createdAt: -1 });
+    const ACTIVE_PROJECT_STAGES = [
+      'CHALLENGE_ACCEPTED',
+      'PROJECT_CREATED',
+      'PROPOSAL_SUBMITTED',
+      'APPROVED',
+      'RESEARCH',
+      'PROTOTYPE',
+      'TESTING',
+      'PILOT',
+      'VALIDATION',
+      'DEPLOYMENT'
+    ];
 
-    // Enrich with AI recommended expertise tags
+    const eligibleFilter = buildUniversityEligibilityFilter(userId);
+
+    // Execute queries in parallel: available challenges (strictly filtered), assigned challenges, and real scoped counts
+    const [
+      availableRaw,
+      assignedChallenges,
+      activeProjects,
+      completedProjects,
+      studentTeams,
+      facultyMentors
+    ] = await Promise.all([
+      Challenge.find(eligibleFilter)
+        .populate('submittedBy', 'name organization district')
+        .sort({ createdAt: -1 }),
+
+      Challenge.find({
+        assignedUniversity: userId,
+        status: { $in: ['ASSIGNED', 'IN_PROGRESS', 'SOLUTION_PROPOSED', 'PILOT_TESTING', 'RESOLVED'] }
+      })
+        .populate('submittedBy', 'name organization district')
+        .populate('industryPartner', 'name organization email')
+        .sort({ updatedAt: -1 }),
+
+      Project.countDocuments({
+        universityId: userId,
+        status: { $in: ACTIVE_PROJECT_STAGES }
+      }),
+
+      Project.countDocuments({
+        universityId: userId,
+        status: 'COMPLETED'
+      }),
+
+      Team.countDocuments({
+        university: userId
+      }),
+
+      Faculty.countDocuments({
+        university: userId,
+        isActive: true
+      })
+    ]);
+
+    // Enrich available challenges with AI recommended expertise tags
     const availableChallenges = availableRaw.map((c) => {
       const obj = c.toObject();
       if (!obj.aiRecommendedExpertise || obj.aiRecommendedExpertise.length === 0) {
@@ -192,28 +274,13 @@ const getChallenges = async (req, res, next) => {
       return obj;
     });
 
-    // 2. Assigned Challenges (Under this university's care)
-    const assignedChallenges = await Challenge.find({
-      assignedUniversity: userId
-    })
-      .populate('submittedBy', 'name email organization district')
-      .populate('industryPartner', 'name organization email')
-      .sort({ updatedAt: -1 });
-
-    // 3. Dynamic metrics
-    const activeProjects = assignedChallenges.filter((c) =>
-      ['ASSIGNED', 'IN_PROGRESS', 'SOLUTION_PROPOSED', 'PILOT_TESTING'].includes(c.status)
-    ).length;
-
-    const completedProjects = assignedChallenges.filter((c) => c.status === 'RESOLVED').length;
-
     const stats = {
       availableChallenges: availableChallenges.length,
       assignedChallenges: assignedChallenges.length,
       activeProjects,
       completedProjects,
-      studentTeams: university?.studentTeamsCount || 14,
-      facultyMentors: university?.facultyMentorsCount || 8
+      studentTeams,
+      facultyMentors
     };
 
     return successResponse(res, 'University challenges & marketplace retrieved successfully', {
@@ -236,59 +303,121 @@ const expressInterest = async (req, res, next) => {
     const { id } = req.params;
     const { notes = 'University research lab is evaluating technical feasibility for this statement.' } = req.body;
     const userId = req.user.id;
+    const userMatches = getUniversityUserMatches(userId);
 
-    const [challenge, university] = await Promise.all([
-      Challenge.findById(id),
-      University.findOne({ user: userId })
-    ]);
+    const university = await University.findOne({ user: userId });
+    const uniName = university?.name || req.user.name || 'University Research Lab';
 
-    if (!challenge) {
+    const eligibleFilter = buildUniversityEligibilityFilter(userId);
+
+    // Atomic findOneAndUpdate: only succeeds if eligible and university hasn't already expressed interest
+    const updatedChallenge = await Challenge.findOneAndUpdate(
+      {
+        _id: id,
+        ...eligibleFilter,
+        'interestedUniversities.university': { $nin: userMatches }
+      },
+      {
+        $push: {
+          interestedUniversities: {
+            university: userId,
+            universityName: uniName,
+            expressedAt: new Date(),
+            notes: (notes || '').trim()
+          }
+        }
+      },
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (updatedChallenge) {
+      // Update university's interestedChallenges if not already present
+      if (university) {
+        const uAlready = university.interestedChallenges?.some(
+          (ic) => ic.challenge?.toString() === id.toString()
+        );
+        if (!uAlready) {
+          university.interestedChallenges.push({
+            challenge: id,
+            expressedAt: new Date(),
+            notes: (notes || '').trim()
+          });
+          await university.save();
+        }
+      }
+
+      // Create Notification for Citizen Submitter
+      await Notification.create({
+        recipient: updatedChallenge.submittedBy,
+        title: 'University Expressed Interest',
+        message: `${uniName} has expressed research interest in your challenge [${updatedChallenge.code}] "${updatedChallenge.title}".`,
+        type: 'GENERAL',
+        challenge: id
+      });
+
+      return successResponse(res, `Expression of interest registered for ${uniName}`, {
+        challenge: updatedChallenge,
+        alreadyExpressed: false
+      });
+    }
+
+    // Atomic update did not match. Re-read to provide precise diagnostic response.
+    const existing = await Challenge.findById(id);
+    if (!existing) {
       return errorResponse(res, 'Challenge not found', null, 404);
     }
 
-    const uniName = university?.name || req.user.name || 'University Research Lab';
-
-    // Check if already expressed interest
-    const already = challenge.interestedUniversities.some(
-      (u) => u.university.toString() === userId.toString()
+    // 1. Check if already expressed interest
+    const already = existing.interestedUniversities?.some(
+      (u) => userMatches.some((m) => m.toString() === u.university?.toString())
     );
-
-    if (!already) {
-      challenge.interestedUniversities.push({
-        university: userId,
-        universityName: uniName,
-        expressedAt: new Date(),
-        notes: notes.trim()
+    if (already) {
+      return successResponse(res, `Interest already registered by ${uniName}`, {
+        challenge: existing,
+        alreadyExpressed: true
       });
-      await challenge.save();
     }
 
-    if (university) {
-      const uAlready = university.interestedChallenges.some(
-        (ic) => ic.challenge.toString() === id.toString()
+    // 2. Check assignment & status
+    if (existing.assignedUniversity) {
+      return errorResponse(res, 'Challenge is already assigned to another accredited university lab', null, 409);
+    }
+
+    if (existing.status !== 'VALIDATED') {
+      return errorResponse(
+        res,
+        `Challenge cannot receive interest because it is in '${existing.status}' status (must be VALIDATED)`,
+        null,
+        400
       );
-      if (!uAlready) {
-        university.interestedChallenges.push({
-          challenge: id,
-          expressedAt: new Date(),
-          notes: notes.trim()
-        });
-        await university.save();
-      }
     }
 
-    // Create Notification for Citizen Submitter
-    await Notification.create({
-      recipient: challenge.submittedBy,
-      title: 'University Expressed Interest',
-      message: `${uniName} has expressed research interest in your challenge [${challenge.code}] "${challenge.title}".`,
-      type: 'GENERAL',
-      challenge: id
-    });
+    // 3. Check AI recommendation eligibility
+    const rec = existing.aiRecommendedUniversities?.find(
+      (r) => userMatches.some((m) => m.toString() === r.universityId?.toString())
+    );
+    if (!rec) {
+      return errorResponse(
+        res,
+        'Your university is not among the AI-matched institutions for this challenge',
+        null,
+        403
+      );
+    }
 
-    return successResponse(res, `Expression of interest registered for ${uniName}`, {
-      challenge
-    });
+    if (rec.status === 'IGNORED') {
+      return errorResponse(
+        res,
+        'Your university has previously declined this challenge',
+        null,
+        403
+      );
+    }
+
+    return errorResponse(res, 'Challenge is not eligible for expression of interest', null, 400);
   } catch (error) {
     next(error);
   }
@@ -303,75 +432,242 @@ const acceptChallenge = async (req, res, next) => {
     const { id } = req.params;
     const { facultyLeadName, facultyLeadDepartment, comment } = req.body;
     const userId = req.user.id;
+    const userMatches = getUniversityUserMatches(userId);
 
-    const [challenge, university] = await Promise.all([
-      Challenge.findById(id),
-      University.findOne({ user: userId })
-    ]);
-
-    if (!challenge) {
-      return errorResponse(res, 'Challenge not found', null, 404);
-    }
-
-    if (challenge.assignedUniversity && challenge.assignedUniversity.toString() !== userId.toString()) {
-      return errorResponse(res, 'Challenge is already assigned to another accredited university lab', null, 400);
-    }
-
-    const previousStatus = challenge.status;
-    // Validate workflow transition to ASSIGNED
-    validateTransition(previousStatus, 'ASSIGNED');
-
+    const university = await University.findOne({ user: userId });
     const uniName = university?.name || req.user.name || 'Accredited Higher Education Institution';
 
-    challenge.assignedUniversity = userId;
-    challenge.status = 'ASSIGNED';
+    const eligibleFilter = buildUniversityEligibilityFilter(userId);
+
+    const adoptionComment = comment || `Formally accepted and adopted for research prototyping by ${uniName}`;
+
+    const updateFields = {
+      status: 'ASSIGNED',
+      assignedUniversity: userId,
+      'aiRecommendedUniversities.$[elem].status': 'ACCEPTED'
+    };
 
     if (facultyLeadName) {
-      challenge.facultyLead = {
+      updateFields.facultyLead = {
         name: facultyLeadName.trim(),
         department: (facultyLeadDepartment || 'Engineering & Applied Research').trim()
       };
     }
 
-    const adoptionComment = comment || `Formally accepted and adopted for research prototyping by ${uniName}`;
-    challenge.timeline.push({
-      status: 'ASSIGNED',
-      label: `Adopted by ${uniName}`,
-      comment: adoptionComment,
-      date: new Date()
-    });
+    // Atomic findOneAndUpdate with arrayFilters targeting ONLY this university's recommendation
+    const updatedChallenge = await Challenge.findOneAndUpdate(
+      {
+        _id: id,
+        ...eligibleFilter
+      },
+      {
+        $set: updateFields,
+        $push: {
+          timeline: {
+            status: 'ASSIGNED',
+            label: `Adopted by ${uniName}`,
+            comment: adoptionComment,
+            date: new Date()
+          }
+        }
+      },
+      {
+        new: true,
+        runValidators: true,
+        arrayFilters: [{ 'elem.universityId': { $in: userMatches } }]
+      }
+    );
 
-    await challenge.save();
+    if (updatedChallenge) {
+      // 1. Create Audit Record
+      await AuditLog.create({
+        challenge: id,
+        user: userId,
+        userName: uniName,
+        userRole: 'UNIVERSITY',
+        action: 'ASSIGN_UNIVERSITY',
+        previousStatus: 'VALIDATED',
+        newStatus: 'ASSIGNED',
+        comment: adoptionComment,
+        metadata: {
+          universityId: userId,
+          universityName: uniName,
+          facultyLead: updatedChallenge.facultyLead
+        }
+      });
 
-    // 1. Create Audit Record
-    await AuditLog.create({
-      challenge: id,
-      user: userId,
-      userName: uniName,
-      userRole: 'UNIVERSITY',
-      action: 'ASSIGN_UNIVERSITY',
-      previousStatus,
-      newStatus: 'ASSIGNED',
-      comment: adoptionComment,
-      metadata: { universityId: userId, universityName: uniName, facultyLead: challenge.facultyLead }
-    });
+      // 2. Create Citizen Notification
+      await Notification.create({
+        recipient: updatedChallenge.submittedBy,
+        title: 'Challenge Adopted by University Research Lab',
+        message: `Your challenge [${updatedChallenge.code}] has been adopted by ${uniName} for solution engineering and student cohort prototyping.`,
+        type: 'ASSIGNED',
+        challenge: id
+      });
 
-    // 2. Create Citizen Notification
-    await Notification.create({
-      recipient: challenge.submittedBy,
-      title: 'Challenge Adopted by University Research Lab',
-      message: `Your challenge [${challenge.code}] has been adopted by ${uniName} for solution engineering and student cohort prototyping.`,
-      type: 'ASSIGNED',
-      challenge: id
-    });
+      const populated = await Challenge.findById(id)
+        .populate('submittedBy', 'name organization district')
+        .populate('assignedUniversity', 'name email organization');
 
-    const populated = await Challenge.findById(id)
-      .populate('submittedBy', 'name email organization phone district')
-      .populate('assignedUniversity', 'name email organization');
+      return successResponse(res, `Challenge successfully adopted by ${uniName}`, {
+        challenge: populated
+      });
+    }
 
-    return successResponse(res, `Challenge successfully adopted by ${uniName}`, {
-      challenge: populated
-    });
+    // Atomic update failed (already assigned, not eligible, or not found). Re-read to diagnose.
+    const existing = await Challenge.findById(id);
+    if (!existing) {
+      return errorResponse(res, 'Challenge not found', null, 404);
+    }
+
+    if (existing.assignedUniversity) {
+      if (userMatches.some((m) => m.toString() === existing.assignedUniversity.toString())) {
+        return errorResponse(res, 'Challenge is already adopted by your university', null, 400);
+      }
+      return errorResponse(
+        res,
+        'Challenge is already assigned to another accredited university lab',
+        null,
+        409
+      );
+    }
+
+    if (existing.status !== 'VALIDATED') {
+      try {
+        validateTransition(existing.status, 'ASSIGNED');
+      } catch (transErr) {
+        return errorResponse(res, transErr.message, null, 400);
+      }
+      return errorResponse(
+        res,
+        `Challenge cannot be adopted because it is in '${existing.status}' status (must be VALIDATED)`,
+        null,
+        400
+      );
+    }
+
+    const rec = existing.aiRecommendedUniversities?.find(
+      (r) => userMatches.some((m) => m.toString() === r.universityId?.toString())
+    );
+    if (!rec) {
+      return errorResponse(
+        res,
+        'Your university is not among the AI-matched institutions for this challenge',
+        null,
+        403
+      );
+    }
+
+    if (rec.status === 'IGNORED') {
+      return errorResponse(
+        res,
+        'Your university has previously declined this challenge and cannot adopt it',
+        null,
+        403
+      );
+    }
+
+    return errorResponse(res, 'Challenge cannot be adopted at this time', null, 400);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Decline Challenge Recommendation for Authenticated University
+ * POST /api/universities/challenges/:id/decline
+ */
+const declineChallenge = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const userMatches = getUniversityUserMatches(userId);
+
+    // Atomic update: only update this university's recommendation from PENDING to IGNORED
+    // Only applies if challenge is VALIDATED, unassigned, and this university was recommended and not already ACCEPTED
+    const updatedChallenge = await Challenge.findOneAndUpdate(
+      {
+        _id: id,
+        status: 'VALIDATED',
+        assignedUniversity: null,
+        aiRecommendedUniversities: {
+          $elemMatch: {
+            universityId: { $in: userMatches },
+            status: { $nin: ['ACCEPTED', 'IGNORED'] }
+          }
+        }
+      },
+      {
+        $set: {
+          'aiRecommendedUniversities.$[elem].status': 'IGNORED'
+        }
+      },
+      {
+        new: true,
+        runValidators: true,
+        arrayFilters: [{ 'elem.universityId': { $in: userMatches } }]
+      }
+    );
+
+    if (updatedChallenge) {
+      return successResponse(res, 'Challenge recommendation declined successfully', {
+        challengeId: id
+      });
+    }
+
+    // Atomic update didn't match. Re-read for exact diagnosis.
+    const existing = await Challenge.findById(id);
+    if (!existing) {
+      return errorResponse(res, 'Challenge not found', null, 404);
+    }
+
+    if (existing.assignedUniversity) {
+      return errorResponse(
+        res,
+        'Challenge is already assigned to an accredited university lab',
+        null,
+        409
+      );
+    }
+
+    if (existing.status !== 'VALIDATED') {
+      return errorResponse(
+        res,
+        `Challenge cannot be declined because it is in '${existing.status}' status (must be VALIDATED)`,
+        null,
+        400
+      );
+    }
+
+    const rec = existing.aiRecommendedUniversities?.find(
+      (r) => userMatches.some((m) => m.toString() === r.universityId?.toString())
+    );
+    if (!rec) {
+      return errorResponse(
+        res,
+        'Your university is not among the AI-matched institutions for this challenge',
+        null,
+        403
+      );
+    }
+
+    if (rec.status === 'ACCEPTED') {
+      return errorResponse(
+        res,
+        'Cannot decline a challenge that your institution has already accepted',
+        null,
+        400
+      );
+    }
+
+    if (rec.status === 'IGNORED') {
+      return successResponse(res, 'Challenge has already been declined by your institution', {
+        challengeId: id,
+        alreadyDeclined: true
+      });
+    }
+
+    return errorResponse(res, 'Unable to decline challenge at this time', null, 400);
   } catch (error) {
     next(error);
   }
@@ -382,5 +678,9 @@ module.exports = {
   updateProfile,
   getChallenges,
   expressInterest,
-  acceptChallenge
+  acceptChallenge,
+  declineChallenge,
+  buildUniversityEligibilityFilter,
+  getUniversityUserMatches
 };
+

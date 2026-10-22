@@ -5,7 +5,10 @@ const StudentInterest = require('../models/StudentInterest');
 const Project = require('../models/Project');
 const Team = require('../models/Team');
 const mongoose = require('mongoose');
+const aiService = require('../services/aiService');
 const { dispatchNotification } = require('../services/notificationDispatcher');
+const AuditLog = require('../models/AuditLog');
+const { validateTransition } = require('../utils/validationWorkflow');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 
 /**
@@ -67,7 +70,37 @@ const createChallenge = async (req, res, next) => {
       ]
     });
 
-    const populated = await Challenge.findById(challenge._id).populate('submittedBy', 'name email organization role');
+    // Phase 3: AI Problem Intelligence Analysis (non-blocking, bounded timeout, safe update)
+    try {
+      const existingChallenges = await Challenge.find({ _id: { $ne: challenge._id } })
+        .select('_id code title description')
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean();
+
+      const aiUpdates = await aiService.analyzeChallengeForCreation(
+        {
+          title: challenge.title,
+          description: challenge.description,
+          urgency: challenge.urgency,
+          severity: challenge.severity,
+          impact: challenge.impact,
+          location: challenge.location,
+          district: challenge.district
+        },
+        existingChallenges
+      );
+
+      if (aiUpdates && Object.keys(aiUpdates).length > 0) {
+        await Challenge.findByIdAndUpdate(challenge._id, { $set: aiUpdates });
+      }
+    } catch (aiErr) {
+      console.warn('[AI Service Notice] AI processing skipped during challenge creation:', aiErr.message);
+    }
+
+    const populated = await Challenge.findById(challenge._id)
+      .select('-aiDuplicates')
+      .populate('submittedBy', 'name email organization role');
 
     // Notify administrators of new societal challenge
     try {
@@ -111,6 +144,7 @@ const getChallenges = async (req, res, next) => {
     if (assignedUniversity) query.assignedUniversity = assignedUniversity;
 
     const challenges = await Challenge.find(query)
+      .select('-aiDuplicates')
       .populate('submittedBy', 'name district organization')
       .populate('assignedUniversity', 'name email organization')
       .populate('assignedStudents', 'name email organization')
@@ -133,6 +167,7 @@ const getChallenges = async (req, res, next) => {
 const getChallengeById = async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id)
+      .select('-aiDuplicates')
       .populate('submittedBy', 'name district organization')
       .populate('assignedUniversity', 'name email organization')
       .populate('assignedStudents', 'name email organization')
@@ -207,19 +242,49 @@ const assignCohort = async (req, res, next) => {
       return errorResponse(res, 'Challenge not found', null, 404);
     }
 
+    // University ownership check applies strictly to UNIVERSITY role
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && challenge.assignedUniversity?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: This challenge is not assigned to your university', null, 403);
+    }
+
+    const previousStatus = challenge.status;
+    try {
+      validateTransition(previousStatus, 'IN_PROGRESS');
+    } catch (transErr) {
+      return errorResponse(res, transErr.message, null, 400);
+    }
+
     if (facultyLead) challenge.facultyLead = facultyLead;
     if (studentIds && Array.isArray(studentIds)) {
       challenge.assignedStudents = studentIds;
     }
     if (solutionNotes) challenge.solutionNotes = solutionNotes;
-    challenge.status = 'in_progress';
+    challenge.status = 'IN_PROGRESS';
 
     if (challenge.milestones.length > 1) {
       challenge.milestones[0].completed = true;
       challenge.milestones[1].completed = true;
     }
 
+    challenge.timeline.push({
+      status: 'IN_PROGRESS',
+      label: 'Cohort Assigned & Prototyping Active',
+      comment: solutionNotes || 'Student cohort and faculty lead designated by university research lab.',
+      date: new Date()
+    });
+
     await challenge.save();
+
+    await AuditLog.create({
+      challenge: challenge._id,
+      user: req.user.id,
+      userName: req.user.name || 'Authorized Lead',
+      userRole: req.user.role || 'UNIVERSITY',
+      action: 'ASSIGN_COHORT',
+      previousStatus,
+      newStatus: 'IN_PROGRESS',
+      comment: solutionNotes || 'Student cohort and faculty lead designated.'
+    });
 
     const updated = await Challenge.findById(challenge._id)
       .populate('submittedBy', 'name email organization')

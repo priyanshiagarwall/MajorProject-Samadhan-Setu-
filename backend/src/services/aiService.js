@@ -1,4 +1,6 @@
-const AI_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const mongoose = require('mongoose');
+const Challenge = require('../models/Challenge');
+const getAIBaseUrl = () => process.env.AI_SERVICE_URL || 'http://localhost:8000';
 const TIMEOUT_MS = 6000; // 6 seconds timeout
 
 /**
@@ -9,7 +11,7 @@ const postJSON = async (endpoint, payload) => {
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${AI_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${getAIBaseUrl()}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -294,6 +296,189 @@ const aiService = {
         explainableSummary: 'Recommended based on technical capability, CSR alignment and pilot testing infrastructure.'
       }));
     }
+  },
+
+  /**
+   * Phase 3: Strict response validators (additive) - ZERO invented default values
+   */
+  validateClassification: (data, validCategories = []) => {
+    if (!data || typeof data !== 'object') return null;
+    const { category, subcategory, confidence, requiresHumanReview, explanation } = data;
+    if (typeof category !== 'string' || !validCategories.includes(category)) return null;
+    if (typeof subcategory !== 'string' || !subcategory.trim()) return null;
+    if (typeof confidence !== 'number' || isNaN(confidence) || confidence < 0 || confidence > 1) return null;
+    if (typeof requiresHumanReview !== 'boolean') return null;
+    if (typeof explanation !== 'string' || !explanation.trim()) return null;
+
+    return {
+      category,
+      subcategory: subcategory.trim(),
+      confidence: Number(confidence.toFixed(2)),
+      requiresHumanReview,
+      explanation: explanation.trim()
+    };
+  },
+
+  validatePriority: (data) => {
+    if (!data || typeof data !== 'object') return null;
+    const { recommendation, confidence, reasoning } = data;
+    const validPriorities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+    if (typeof recommendation !== 'string' || !validPriorities.includes(recommendation.toUpperCase())) return null;
+    if (typeof confidence !== 'number' || isNaN(confidence) || confidence < 0 || confidence > 1) return null;
+    if (typeof reasoning !== 'string' || !reasoning.trim()) return null;
+
+    return {
+      recommendedPriority: recommendation.toUpperCase(),
+      confidence: Number(confidence.toFixed(2)),
+      reasoning: reasoning.trim()
+    };
+  },
+
+  validateDuplicates: (data, comparisonSet = []) => {
+    if (!data || typeof data !== 'object') return null;
+    const { similarityScore, topMatches } = data;
+    if (typeof similarityScore !== 'number' || isNaN(similarityScore) || similarityScore < 0 || similarityScore > 1) return null;
+    if (!Array.isArray(topMatches)) return null;
+
+    const validIds = new Map();
+    for (const c of comparisonSet) {
+      const cid = (c?._id || c?.id)?.toString();
+      if (cid) {
+        validIds.set(cid, c);
+      }
+    }
+
+    const validMatches = [];
+    for (const m of topMatches) {
+      if (!m || typeof m !== 'object') continue;
+      const matchId = (m.id || m._id)?.toString();
+      if (!matchId) continue;
+      if (!mongoose.Types.ObjectId.isValid(matchId)) continue;
+      const original = validIds.get(matchId);
+      if (!original) continue;
+
+      if (typeof m.similarityScore !== 'number' || isNaN(m.similarityScore) || m.similarityScore < 0 || m.similarityScore > 1) continue;
+
+      validMatches.push({
+        challengeId: matchId,
+        code: typeof m.code === 'string' && m.code.trim() ? m.code.trim() : (original.code || ''),
+        title: typeof m.title === 'string' && m.title.trim() ? m.title.trim() : (original.title || ''),
+        similarityScore: Number(m.similarityScore.toFixed(3))
+      });
+    }
+
+    return {
+      aiDuplicateScore: Number(similarityScore.toFixed(3)),
+      aiDuplicates: validMatches.slice(0, 5)
+    };
+  },
+
+  validateSummary: (data) => {
+    if (!data || typeof data !== 'object' || !data.summary || typeof data.summary !== 'object') return null;
+    const s = data.summary;
+    if (typeof s.problem !== 'string' || !s.problem.trim()) return null;
+    if (typeof s.affectedGroup !== 'string' || !s.affectedGroup.trim()) return null;
+    if (typeof s.location !== 'string' || !s.location.trim()) return null;
+    if (typeof s.expectedOutcome !== 'string' || !s.expectedOutcome.trim()) return null;
+
+    return {
+      problem: s.problem.trim(),
+      affectedGroup: s.affectedGroup.trim(),
+      location: s.location.trim(),
+      expectedOutcome: s.expectedOutcome.trim()
+    };
+  },
+
+  /**
+   * Phase 3: Real challenge creation analysis (additive)
+   * 2500ms bounded timeout, Promise.allSettled, zero invented defaults
+   */
+  analyzeChallengeForCreation: async (challengeData, existingChallenges = []) => {
+    const CREATION_TIMEOUT_MS = 2500;
+
+    const postCreationJSON = async (endpoint, payload) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CREATION_TIMEOUT_MS);
+      try {
+        const response = await fetch(`${getAIBaseUrl()}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          throw new Error(`AI Service responded with status ${response.status}`);
+        }
+        return await response.json();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
+    };
+
+    const { title, description, urgency, severity, impact, location, district } = challengeData;
+
+    // Send only values that actually exist (no fake urgency/severity/impact)
+    const priorityPayload = { title, description };
+    if (urgency) priorityPayload.urgency = urgency;
+    if (severity) priorityPayload.severity = severity;
+    if (impact) priorityPayload.affected_population = impact;
+
+    const duplicatePayload = {
+      title,
+      description,
+      existing_challenges: existingChallenges.map((c) => ({
+        id: c._id ? c._id.toString() : c.id,
+        code: c.code,
+        title: c.title,
+        description: c.description
+      })),
+      threshold: 0.70
+    };
+
+    const summarizePayload = {
+      title,
+      description,
+      location: location?.area || location?.landmark || undefined,
+      district: district || undefined
+    };
+
+    const validCategories = Challenge.schema?.path('category')?.enumValues || [];
+
+    const [classResult, priResult, dupResult, sumResult] = await Promise.allSettled([
+      postCreationJSON('/ai/classify', { title, description }),
+      postCreationJSON('/ai/priority', priorityPayload),
+      postCreationJSON('/ai/duplicate-check', duplicatePayload),
+      postCreationJSON('/ai/summarize', summarizePayload)
+    ]);
+
+    const result = {};
+
+    if (classResult.status === 'fulfilled' && classResult.value) {
+      const valid = aiService.validateClassification(classResult.value, validCategories);
+      if (valid) result.aiClassification = valid;
+    }
+
+    if (priResult.status === 'fulfilled' && priResult.value) {
+      const valid = aiService.validatePriority(priResult.value);
+      if (valid) result.aiPriority = valid;
+    }
+
+    if (dupResult.status === 'fulfilled' && dupResult.value) {
+      const valid = aiService.validateDuplicates(dupResult.value, existingChallenges);
+      if (valid) {
+        result.aiDuplicateScore = valid.aiDuplicateScore;
+        result.aiDuplicates = valid.aiDuplicates;
+      }
+    }
+
+    if (sumResult.status === 'fulfilled' && sumResult.value) {
+      const valid = aiService.validateSummary(sumResult.value);
+      if (valid) result.aiSummary = valid;
+    }
+
+    return result;
   }
 };
 

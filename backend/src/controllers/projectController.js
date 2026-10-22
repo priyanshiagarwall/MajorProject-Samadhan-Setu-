@@ -345,6 +345,21 @@ const createProject = async (req, res, next) => {
       return errorResponse(res, 'University ID is required', null, 400);
     }
 
+    // University ownership check applies strictly to UNIVERSITY role
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && challenge.assignedUniversity?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: This challenge is not assigned to your university', null, 403);
+    }
+
+    const validChallengeStatuses = ['ASSIGNED', 'IN_PROGRESS'];
+    if (!validChallengeStatuses.includes((challenge.status || '').toUpperCase())) {
+      return errorResponse(
+        res,
+        `Cannot create project: Challenge is in '${challenge.status}' status (must be ASSIGNED or IN_PROGRESS)`,
+        null,
+        400
+      );
+    }
+
     const defaultMilestones = [
       {
         title: 'Municipal Baseline Survey & Technical Feasibility',
@@ -2176,6 +2191,11 @@ const updatePartnershipStatus = async (req, res, next) => {
     const project = await Project.findById(id);
     if (!project) {
       return errorResponse(res, 'Project not found', null, 404);
+    }
+
+    // University ownership check applies strictly to role UNIVERSITY
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && project.universityId?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: You can only evaluate partnerships for your university projects', null, 403);
     }
 
     const partnership = await Partnership.findOne({ _id: partnershipId, project: id })

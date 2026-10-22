@@ -6,6 +6,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   Briefcase,
   Plus,
@@ -24,14 +25,37 @@ import {
   Layers
 } from 'lucide-react';
 
+const ACTIVE_PROJECT_STAGES = [
+  'CHALLENGE_ACCEPTED',
+  'PROJECT_CREATED',
+  'PROPOSAL_SUBMITTED',
+  'APPROVED',
+  'RESEARCH',
+  'PROTOTYPE',
+  'TESTING',
+  'PILOT',
+  'VALIDATION',
+  'DEPLOYMENT'
+];
+
 const STATUS_CONFIG = {
+  // Canonical 11-stage project lifecycle
+  CHALLENGE_ACCEPTED: { label: 'Challenge Accepted', color: 'bg-stone-100 text-stone-700 border-stone-300' },
   PROJECT_CREATED: { label: 'Project Created', color: 'bg-stone-100 text-stone-700 border-stone-300' },
-  TEAM_FORMED: { label: 'Team Formed', color: 'bg-blue-100 text-blue-800 border-blue-300' },
   PROPOSAL_SUBMITTED: { label: 'Proposal Submitted', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+  APPROVED: { label: 'Council Approved', color: 'bg-blue-100 text-blue-800 border-blue-300 font-bold' },
+  RESEARCH: { label: 'Academic Research', color: 'bg-indigo-100 text-indigo-900 border-indigo-300' },
+  PROTOTYPE: { label: 'Prototype Fabrication', color: 'bg-purple-100 text-purple-800 border-purple-300 font-bold' },
+  TESTING: { label: 'Benchtop Testing', color: 'bg-cyan-100 text-cyan-800 border-cyan-300 font-bold' },
+  PILOT: { label: 'Live Ward Pilot', color: 'bg-orange-100 text-orange-800 border-orange-300 font-bold' },
+  VALIDATION: { label: 'Municipal Validation', color: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' },
+  DEPLOYMENT: { label: 'Ward Deployment', color: 'bg-teal-100 text-teal-800 border-teal-300 font-bold' },
+  COMPLETED: { label: 'Completed', color: 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold' },
+
+  // Legacy fallbacks
+  TEAM_FORMED: { label: 'Team Formed', color: 'bg-blue-100 text-blue-800 border-blue-300' },
   UNDER_REVIEW: { label: 'Under Review', color: 'bg-purple-100 text-purple-800 border-purple-300' },
-  APPROVED: { label: 'Approved', color: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' },
-  DEVELOPMENT: { label: 'In Development', color: 'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold' },
-  COMPLETED: { label: 'Completed', color: 'bg-teal-100 text-teal-800 border-teal-300 font-bold' }
+  DEVELOPMENT: { label: 'In Development', color: 'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold' }
 };
 
 const UniversityProjectsPage = () => {
@@ -52,11 +76,12 @@ const UniversityProjectsPage = () => {
   const [proposedSolution, setProposedSolution] = useState('');
   const [objectives, setObjectives] = useState('');
   const [technologies, setTechnologies] = useState('');
-  const [timeline, setTimeline] = useState('6 Months');
+  const [timeline, setTimeline] = useState('');
   const [budgetAmount, setBudgetAmount] = useState('');
   const [budgetBreakdown, setBudgetBreakdown] = useState('');
   const [teamRequirements, setTeamRequirements] = useState('');
   const [selectedMentor, setSelectedMentor] = useState('');
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'active' | 'completed'
 
   // Proposal Form State
   const [methodology, setMethodology] = useState('');
@@ -94,12 +119,10 @@ const UniversityProjectsPage = () => {
     const target = assignedChallenges.find((c) => c._id === cId);
     if (target) {
       setProjectTitle(`Prototype: ${target.title}`);
-      setProblemStatement(target.description);
+      setProblemStatement(target.description || '');
       setProposedSolution('');
-      setObjectives(
-        `1. Complete municipal baseline survey and literature review\n2. Fabricate deployable hardware / software prototype\n3. Execute ward field validation and citizen verification`
-      );
-      setTechnologies((target.tags || ['IoT', 'AI/ML']).join(', '));
+      setObjectives('');
+      setTechnologies(Array.isArray(target.tags) ? target.tags.join(', ') : '');
       if (target.facultyLead?.name) {
         const matchingFac = facultyList.find((f) => f.name.includes(target.facultyLead.name));
         if (matchingFac) setSelectedMentor(matchingFac._id);
@@ -137,7 +160,7 @@ const UniversityProjectsPage = () => {
       fetchData();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to create project');
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to create project');
     } finally {
       setSubmitting(false);
     }
@@ -146,6 +169,10 @@ const UniversityProjectsPage = () => {
   const handleSubmitProposal = async (e) => {
     e.preventDefault();
     if (!proposalProject) return;
+    if (!methodology.trim() || !expectedImpact.trim()) {
+      setErrorMsg('Both technical methodology and expected societal impact are required.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg('');
@@ -153,10 +180,10 @@ const UniversityProjectsPage = () => {
       await projectService.submitProposal(proposalProject._id, {
         problemUnderstanding: proposalProject.description,
         proposedSolution: proposalProject.proposedSolution,
-        methodology: methodology || 'Multidisciplinary laboratory synthesis and field testing',
+        methodology: methodology.trim(),
         technology: proposalProject.technologies,
         timeline: proposalProject.timeline,
-        expectedImpact: expectedImpact || 'Tangible municipal relief and open hardware architecture for Delhi'
+        expectedImpact: expectedImpact.trim()
       });
 
       setActionSuccess(`Formal proposal for "${proposalProject.title}" submitted to GNCTD! Status: PROPOSAL_SUBMITTED`);
@@ -166,7 +193,7 @@ const UniversityProjectsPage = () => {
       fetchData();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to submit proposal');
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to submit proposal');
     } finally {
       setSubmitting(false);
     }
@@ -184,6 +211,30 @@ const UniversityProjectsPage = () => {
     setTeamRequirements('');
     setSelectedMentor('');
   };
+
+  if (loading) {
+    return <LoadingState message="Loading university innovation projects & research milestones..." />;
+  }
+
+  if (errorMsg && projects.length === 0) {
+    return (
+      <ErrorState
+        title="Projects Workspace Connection Error"
+        message={errorMsg}
+        onRetry={fetchData}
+        retryLabel="Retry Connection"
+      />
+    );
+  }
+
+  const activeCount = projects.filter((p) => ACTIVE_PROJECT_STAGES.includes(p.status)).length;
+  const completedCount = projects.filter((p) => p.status === 'COMPLETED').length;
+
+  const filteredProjects = projects.filter((p) => {
+    if (activeTab === 'active') return ACTIVE_PROJECT_STAGES.includes(p.status);
+    if (activeTab === 'completed') return p.status === 'COMPLETED';
+    return true;
+  });
 
   return (
     <div className="space-y-6 font-serif">
@@ -218,6 +269,43 @@ const UniversityProjectsPage = () => {
         </div>
       </div>
 
+      {/* Filter Tabs (All, Active, Completed) */}
+      <div className="flex items-center space-x-2 border-b border-gov-border pb-3 text-xs">
+        <button
+          type="button"
+          onClick={() => setActiveTab('all')}
+          className={`px-3 py-1.5 rounded-xs font-semibold transition-colors ${
+            activeTab === 'all'
+              ? 'bg-gov-navy text-white shadow-xs'
+              : 'bg-white border border-gov-border text-gov-text-secondary hover:text-gov-navy hover:bg-gov-sand-50'
+          }`}
+        >
+          All ({projects.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('active')}
+          className={`px-3 py-1.5 rounded-xs font-semibold transition-colors ${
+            activeTab === 'active'
+              ? 'bg-gov-navy text-white shadow-xs'
+              : 'bg-white border border-gov-border text-gov-text-secondary hover:text-gov-navy hover:bg-gov-sand-50'
+          }`}
+        >
+          Active ({activeCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('completed')}
+          className={`px-3 py-1.5 rounded-xs font-semibold transition-colors ${
+            activeTab === 'completed'
+              ? 'bg-gov-navy text-white shadow-xs'
+              : 'bg-white border border-gov-border text-gov-text-secondary hover:text-gov-navy hover:bg-gov-sand-50'
+          }`}
+        >
+          Completed ({completedCount})
+        </button>
+      </div>
+
       {actionSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xs flex items-center space-x-2">
           <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
@@ -232,17 +320,25 @@ const UniversityProjectsPage = () => {
       )}
 
       {/* Projects Table & Lifecycle Matrix */}
-      {loading ? (
-        <LoadingState message="Loading university innovation projects & research milestones..." />
-      ) : projects.length === 0 ? (
+      {filteredProjects.length === 0 ? (
         <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-3">
-          <p className="text-sm font-bold text-gov-navy">No Innovation Projects Created Yet</p>
-          <p className="max-w-md mx-auto text-[11px]">
-            Once your university accepts a challenge from the Marketplace, click below to initiate an engineering prototype project.
+          <p className="text-sm font-bold text-gov-navy">
+            {activeTab === 'completed'
+              ? 'No Completed Projects Found'
+              : activeTab === 'active'
+              ? 'No Active Projects Found'
+              : 'No Innovation Projects Created Yet'}
           </p>
-          <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)} icon={Plus}>
-            Create First Project
-          </Button>
+          <p className="max-w-md mx-auto text-[11px]">
+            {activeTab === 'all'
+              ? 'Once your university accepts a challenge from the Marketplace, click below to initiate an engineering prototype project.'
+              : 'No projects match the selected status filter.'}
+          </p>
+          {activeTab === 'all' && (
+            <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)} icon={Plus}>
+              Create First Project
+            </Button>
+          )}
         </Card>
       ) : (
         <div className="space-y-4">
@@ -259,8 +355,8 @@ const UniversityProjectsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gov-border">
-                {projects.map((p) => {
-                  const statusInfo = STATUS_CONFIG[p.status] || { label: p.status, color: 'bg-gray-100 text-gray-700' };
+                {filteredProjects.map((p) => {
+                  const statusInfo = STATUS_CONFIG[p.status] || { label: p.status || 'Unknown', color: 'bg-gray-100 text-gray-700 border-gray-300' };
                   return (
                     <tr key={p._id} className="hover:bg-gov-sand-50 transition-colors">
                       {/* Title & Challenge */}
@@ -315,15 +411,17 @@ const UniversityProjectsPage = () => {
 
                       {/* Timeline & Budget */}
                       <td className="px-3 py-3 whitespace-nowrap text-[11px] text-gov-text-secondary">
-                        <div>{p.timeline}</div>
+                        <div>{p.timeline || 'Not provided'}</div>
                         <div className="font-bold text-emerald-800">
-                          ₹{(p.budget?.estimatedAmount || 0).toLocaleString('en-IN')}
+                          {p.budget?.estimatedAmount !== undefined && p.budget?.estimatedAmount !== null && p.budget.estimatedAmount > 0
+                            ? `₹${Number(p.budget.estimatedAmount).toLocaleString('en-IN')}`
+                            : 'Not specified'}
                         </div>
                       </td>
 
                       {/* Actions */}
                       <td className="px-3 py-3 whitespace-nowrap text-right space-x-1">
-                        <Link to={`/projects/${p._id}`}>
+                        <Link to={`/university/projects/${p._id}`}>
                           <Button
                             variant="subtle"
                             size="sm"
@@ -340,8 +438,8 @@ const UniversityProjectsPage = () => {
                             size="sm"
                             onClick={() => {
                               setProposalProject(p);
-                              setMethodology('Rapid prototyping with iterative laboratory analysis and field testing');
-                              setExpectedImpact('Civic infrastructure relief and open-source municipal hardware specification');
+                              setMethodology('');
+                              setExpectedImpact('');
                             }}
                             icon={Send}
                             className="bg-gov-maroon hover:bg-gov-maroon-dark text-white"
@@ -350,7 +448,7 @@ const UniversityProjectsPage = () => {
                           </Button>
                         ) : (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-xs border border-emerald-200">
-                            Proposal {p.proposal?.approvalStatus || 'SUBMITTED'}
+                            Proposal {p.proposal?.approvalStatus || 'Pending'}
                           </span>
                         )}
                       </td>
@@ -379,6 +477,12 @@ const UniversityProjectsPage = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xs">
+                {errorMsg}
+              </div>
+            )}
 
             <form onSubmit={handleCreateProject} className="space-y-4 text-xs">
               {/* Select Accepted Challenge */}
@@ -554,9 +658,20 @@ const UniversityProjectsPage = () => {
             <div className="p-2.5 bg-gov-sand-50 rounded-xs border border-gov-border text-xs">
               <div className="font-bold text-gov-navy">{proposalProject.title}</div>
               <div className="text-gov-text-muted text-[11px] mt-0.5">
-                Timeline: {proposalProject.timeline} &bull; Budget: ₹{(proposalProject.budget?.estimatedAmount || 0).toLocaleString('en-IN')}
+                Timeline: {proposalProject.timeline || 'Not provided'} &bull; Budget:{' '}
+                {proposalProject.budget?.estimatedAmount !== undefined &&
+                proposalProject.budget?.estimatedAmount !== null &&
+                proposalProject.budget.estimatedAmount > 0
+                  ? `₹${Number(proposalProject.budget.estimatedAmount).toLocaleString('en-IN')}`
+                  : 'Not specified'}
               </div>
             </div>
+
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xs">
+                {errorMsg}
+              </div>
+            )}
 
             <form onSubmit={handleSubmitProposal} className="space-y-3 text-xs">
               <div>
@@ -659,7 +774,11 @@ const UniversityProjectsPage = () => {
                     <div key={idx} className="p-2.5 bg-white border border-gov-border rounded-xs flex items-center justify-between text-xs">
                       <div>
                         <div className="font-bold text-gov-navy">{m.title}</div>
-                        <div className="text-gov-text-muted text-[11px]">{m.deliverable}</div>
+                        <div className="text-gov-text-muted text-[11px]">
+                          {Array.isArray(m.deliverables) && m.deliverables.length > 0
+                            ? m.deliverables.join(', ')
+                            : m.description || 'Not provided'}
+                        </div>
                       </div>
                       <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-xs ${
                         m.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
