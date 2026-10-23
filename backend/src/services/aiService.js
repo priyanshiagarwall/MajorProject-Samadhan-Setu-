@@ -479,6 +479,199 @@ const aiService = {
     }
 
     return result;
+  },
+
+  /**
+   * Phase 10: Strict response validator for university matching (additive)
+   * Enforces that all recommendations originate from the actual AI service response:
+   * - Drops entries whose universityId is not in the sent set
+   * - Deduplicates ids (keeps first/highest occurrence)
+   * - Drops entries whose percentage != round(score * 100)
+   * - Requires matchingReasons to be an array of non-empty strings
+   * - Enforces score within 0.0 - 1.0 and percentage within 0 - 100
+   * - Preserves the exact Challenge.js entry shape without invented DB fields
+   */
+  validateUniversityRecommendations: (rawRecommendations, sentUniversities = []) => {
+    if (!Array.isArray(rawRecommendations)) return [];
+
+    const sentMap = new Map();
+    for (const u of sentUniversities) {
+      if (!u || !u.user) continue;
+      const uid = u.user.toString();
+      sentMap.set(uid, u);
+    }
+
+    const seenIds = new Set();
+    const validated = [];
+
+    for (const r of rawRecommendations) {
+      if (!r || typeof r !== 'object') continue;
+
+      const rId = (r.universityId || r.id || r._id)?.toString();
+      if (!rId) continue;
+
+      // Drop entries whose universityId is not in the sent set
+      if (!sentMap.has(rId)) continue;
+
+      // Deduplicate ids
+      if (seenIds.has(rId)) continue;
+
+      // Score within 0-1 and percentage within 0-100
+      if (typeof r.score !== 'number' || isNaN(r.score) || r.score < 0 || r.score > 1) continue;
+      if (typeof r.percentage !== 'number' || isNaN(r.percentage) || r.percentage < 0 || r.percentage > 100) continue;
+
+      // Drop entries whose percentage != round(score * 100)
+      if (r.percentage !== Math.round(r.score * 100)) continue;
+
+      // Require matchingReasons to be an array of non-empty strings
+      if (!Array.isArray(r.matchingReasons) || r.matchingReasons.length === 0) continue;
+      const allNonEmptyStrings = r.matchingReasons.every((m) => typeof m === 'string' && m.trim().length > 0);
+      if (!allNonEmptyStrings) continue;
+
+      seenIds.add(rId);
+
+      const originalUni = sentMap.get(rId);
+      const cleanReasons = r.matchingReasons.map((m) => m.trim());
+      const summary = (typeof r.explainableSummary === 'string' && r.explainableSummary.trim())
+        ? r.explainableSummary.trim()
+        : 'Recommended based on expertise, facilities and project requirements.';
+      const uniName = (typeof r.universityName === 'string' && r.universityName.trim())
+        ? r.universityName.trim()
+        : (originalUni.name || 'University');
+
+      validated.push({
+        universityId: rId,
+        universityName: uniName,
+        score: Number(r.score.toFixed(2)),
+        percentage: r.percentage,
+        matchingReasons: cleanReasons,
+        explainableSummary: summary
+      });
+    }
+
+    validated.sort((a, b) => b.score - a.score || b.percentage - a.percentage);
+    return validated;
+  },
+
+  /**
+   * Phase 10: Strict AI university matching using real expertise (additive)
+   * 4000ms bounded timeout, Option 1C empty-profile filtering, zero synthetic fallback scores.
+   * Returns metadata { success, source: 'AI_SERVICE' | 'UNAVAILABLE', count, recommendations, error? }.
+   */
+  matchUniversitiesStrict: async (challenge, universities = [], options = {}) => {
+    const { excludeEmptyProfiles = true } = options;
+    const STRICT_TIMEOUT_MS = 4000;
+
+    if (!challenge || typeof challenge !== 'object' || !challenge.title || !challenge.description) {
+      return {
+        success: false,
+        source: 'UNAVAILABLE',
+        count: 0,
+        recommendations: [],
+        error: 'Invalid challenge data: title and description are required.'
+      };
+    }
+
+    if (!Array.isArray(universities) || universities.length === 0) {
+      return {
+        success: true,
+        source: 'AI_SERVICE',
+        count: 0,
+        recommendations: []
+      };
+    }
+
+    // A profile is empty only when expertise, researchAreas, labsAndFacilities AND facultySpecializations are all empty/missing
+    const isProfileEmpty = (u) => {
+      const hasExpertise = Array.isArray(u.expertise) && u.expertise.some((e) => typeof e === 'string' && e.trim().length > 0);
+      const hasResearchAreas = Array.isArray(u.researchAreas) && u.researchAreas.some((r) => typeof r === 'string' && r.trim().length > 0);
+      const hasLabs = Array.isArray(u.labsAndFacilities) && u.labsAndFacilities.some((l) => typeof l === 'string' && l.trim().length > 0);
+      const hasFaculty = Array.isArray(u.facultySpecializations) && u.facultySpecializations.some((f) => f && (f.specialization || f.facultyName));
+      return !hasExpertise && !hasResearchAreas && !hasLabs && !hasFaculty;
+    };
+
+    // Exclude any university that has no user field (User ObjectId is required for authentication/marketplace matching)
+    const universitiesWithUser = universities.filter((u) => u && u.user);
+
+    const candidates = excludeEmptyProfiles
+      ? universitiesWithUser.filter((u) => !isProfileEmpty(u))
+      : universitiesWithUser;
+
+    // If all universities are excluded, return immediately without calling the AI
+    if (candidates.length === 0) {
+      return {
+        success: true,
+        source: 'AI_SERVICE',
+        count: 0,
+        recommendations: []
+      };
+    }
+
+    const payload = {
+      challenge: {
+        title: challenge.title.trim(),
+        description: challenge.description.trim(),
+        category: (challenge.category || '').trim(),
+        required_technologies: Array.isArray(challenge.tags) ? challenge.tags : [],
+        keywords: `${challenge.title} ${challenge.description}`.split(/\s+/).slice(0, 20)
+      },
+      universities: candidates.map((u) => ({
+        id: u.user.toString(),
+        name: u.name || '',
+        district: u.district || '',
+        researchAreas: Array.isArray(u.researchAreas) ? u.researchAreas : [],
+        expertise: Array.isArray(u.expertise) ? u.expertise : [],
+        labsAndFacilities: Array.isArray(u.labsAndFacilities) ? u.labsAndFacilities : [],
+        innovationCentre: u.innovationCentre || '',
+        incubationFacilities: u.incubationFacilities || '',
+        previousProjectAreas: Array.isArray(u.previousProjectAreas)
+          ? u.previousProjectAreas
+          : (Array.isArray(u.researchAreas) ? u.researchAreas : []),
+        facultySpecializations: (u.facultySpecializations || []).map((f) => ({
+          facultyName: f?.facultyName || '',
+          department: f?.department || '',
+          specialization: f?.specialization || ''
+        }))
+      }))
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), STRICT_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${getAIBaseUrl()}/ai/match-universities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI Service responded with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const rawRecs = data?.recommendations || [];
+      const validatedRecs = aiService.validateUniversityRecommendations(rawRecs, candidates);
+
+      return {
+        success: true,
+        source: 'AI_SERVICE',
+        count: validatedRecs.length,
+        recommendations: validatedRecs
+      };
+    } catch (error) {
+      console.warn(`[AI Service Notice] Strict university matching unavailable: ${error.message}`);
+      return {
+        success: false,
+        source: 'UNAVAILABLE',
+        count: 0,
+        recommendations: [],
+        error: error.message
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 };
 
