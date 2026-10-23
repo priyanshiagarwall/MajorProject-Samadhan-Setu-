@@ -17,10 +17,10 @@ const getTeams = async (req, res, next) => {
       filter.university = req.user.id;
     } else if (req.user.role === 'FACULTY') {
       const f = await Faculty.findOne({ user: req.user.id });
-      if (f) filter.facultyMentor = f._id;
+      filter.facultyMentor = f ? f._id : null;
     } else if (req.user.role === 'STUDENT') {
       const s = await Student.findOne({ user: req.user.id });
-      if (s) filter['members.student'] = s._id;
+      filter['members.student'] = s ? s._id : null;
     }
 
     const teams = await Team.find(filter)
@@ -47,18 +47,96 @@ const createTeam = async (req, res, next) => {
 
     const { name, project, facultyMentor, members } = req.body;
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return errorResponse(res, 'Team name is required', null, 400);
     }
 
     const universityId = req.user.role === 'UNIVERSITY' ? req.user.id : req.body.universityId;
+
+    // Validate project if provided
+    if (project) {
+      const proj = await Project.findById(project);
+      if (!proj) {
+        return errorResponse(res, 'Associated project not found', null, 404);
+      }
+      if (req.user.role === 'UNIVERSITY' && proj.universityId?.toString() !== universityId.toString()) {
+        return errorResponse(res, 'Unauthorized: Project belongs to another university', null, 400);
+      }
+    }
+
+    // Validate facultyMentor if provided
+    if (facultyMentor) {
+      const fac = await Faculty.findById(facultyMentor);
+      if (!fac) {
+        return errorResponse(res, 'Faculty mentor not found', null, 404);
+      }
+      if (req.user.role === 'UNIVERSITY' && fac.university?.toString() !== universityId.toString()) {
+        return errorResponse(res, 'Unauthorized: Faculty mentor belongs to another university', null, 400);
+      }
+    }
+
+    // Validate members if provided
+    const memberArray = Array.isArray(members) ? members : [];
+    if (memberArray.length > 0) {
+      const studentIds = memberArray
+        .map((m) => (m.student?._id || m.student)?.toString())
+        .filter(Boolean);
+
+      // Check intra-team duplicate student IDs
+      const uniqueStudentIds = new Set(studentIds);
+      if (uniqueStudentIds.size !== studentIds.length) {
+        return errorResponse(
+          res,
+          'Duplicate students found in team members list. Each student can only be added once.',
+          null,
+          400
+        );
+      }
+
+      const studentDocs = await Student.find({ _id: { $in: studentIds } });
+      if (studentDocs.length !== studentIds.length) {
+        return errorResponse(res, 'One or more selected students could not be found', null, 404);
+      }
+
+      // Check same-university and active team status
+      for (const sDoc of studentDocs) {
+        if (req.user.role === 'UNIVERSITY' && sDoc.university?.toString() !== universityId.toString()) {
+          return errorResponse(
+            res,
+            `Unauthorized: Student "${sDoc.name}" belongs to another university`,
+            null,
+            400
+          );
+        }
+
+        // One active student = one active team check
+        // Check if student is active member in another existing team (ACCEPTED or INVITED)
+        const activeOtherTeam = await Team.findOne({
+          members: {
+            $elemMatch: {
+              student: sDoc._id,
+              status: { $in: ['ACCEPTED', 'INVITED'] }
+            }
+          }
+        });
+
+        if (activeOtherTeam) {
+          return errorResponse(
+            res,
+            `Student "${sDoc.name}" is already an active member of team "${activeOtherTeam.name}". Each student can belong to only one active team.`,
+            null,
+            400
+          );
+        }
+      }
+    }
 
     const team = await Team.create({
       name: name.trim(),
       university: universityId,
       project: project || undefined,
       facultyMentor: facultyMentor || undefined,
-      members: Array.isArray(members) ? members : []
+      members: memberArray
     });
 
     // If project specified, link and advance status to TEAM_FORMED
@@ -72,8 +150,8 @@ const createTeam = async (req, res, next) => {
     }
 
     // Update assignedTeam on member student documents
-    if (Array.isArray(members) && members.length > 0) {
-      const studentIds = members.map((m) => m.student);
+    if (memberArray.length > 0) {
+      const studentIds = memberArray.map((m) => m.student?._id || m.student);
       await Student.updateMany(
         { _id: { $in: studentIds } },
         { assignedTeam: team._id }
@@ -113,10 +191,111 @@ const updateTeam = async (req, res, next) => {
       return errorResponse(res, 'Unauthorized to modify team of another institution', null, 403);
     }
 
+    // Validate project if provided
+    if (project !== undefined && project) {
+      const proj = await Project.findById(project);
+      if (!proj) {
+        return errorResponse(res, 'Associated project not found', null, 404);
+      }
+      if (req.user.role === 'UNIVERSITY' && proj.universityId?.toString() !== req.user.id) {
+        return errorResponse(res, 'Unauthorized: Project belongs to another university', null, 400);
+      }
+    }
+
+    // Validate facultyMentor if provided
+    if (facultyMentor !== undefined && facultyMentor) {
+      const fac = await Faculty.findById(facultyMentor);
+      if (!fac) {
+        return errorResponse(res, 'Faculty mentor not found', null, 404);
+      }
+      if (req.user.role === 'UNIVERSITY' && fac.university?.toString() !== req.user.id) {
+        return errorResponse(res, 'Unauthorized: Faculty mentor belongs to another university', null, 400);
+      }
+    }
+
+    // Validate members if provided
+    if (Array.isArray(members)) {
+      const studentIds = members
+        .map((m) => (m.student?._id || m.student)?.toString())
+        .filter(Boolean);
+
+      // Check intra-team duplicate student IDs
+      const uniqueStudentIds = new Set(studentIds);
+      if (uniqueStudentIds.size !== studentIds.length) {
+        return errorResponse(
+          res,
+          'Duplicate students found in team members list. Each student can only be added once.',
+          null,
+          400
+        );
+      }
+
+      const studentDocs = await Student.find({ _id: { $in: studentIds } });
+      if (studentDocs.length !== studentIds.length) {
+        return errorResponse(res, 'One or more selected students could not be found', null, 404);
+      }
+
+      for (const sDoc of studentDocs) {
+        if (req.user.role === 'UNIVERSITY' && sDoc.university?.toString() !== team.university.toString()) {
+          return errorResponse(
+            res,
+            `Unauthorized: Student "${sDoc.name}" belongs to another university`,
+            null,
+            400
+          );
+        }
+
+        // Check if student belongs to another active team (ACCEPTED or INVITED)
+        const alreadyInThisTeam = team.members.some(
+          (m) => (m.student?._id || m.student)?.toString() === sDoc._id.toString()
+        );
+        if (!alreadyInThisTeam) {
+          const activeOtherTeam = await Team.findOne({
+            _id: { $ne: team._id },
+            members: {
+              $elemMatch: {
+                student: sDoc._id,
+                status: { $in: ['ACCEPTED', 'INVITED'] }
+              }
+            }
+          });
+          if (activeOtherTeam) {
+            return errorResponse(
+              res,
+              `Student "${sDoc.name}" is already an active member of team "${activeOtherTeam.name}". Each student can belong to only one active team.`,
+              null,
+              400
+            );
+          }
+        }
+      }
+
+      // Synchronize Student.assignedTeam
+      const oldStudentIds = team.members
+        .map((m) => (m.student?._id || m.student)?.toString())
+        .filter(Boolean);
+      const removedIds = oldStudentIds.filter((sid) => !studentIds.includes(sid));
+      const addedIds = studentIds.filter((sid) => !oldStudentIds.includes(sid));
+
+      if (removedIds.length > 0) {
+        await Student.updateMany({ _id: { $in: removedIds } }, { $unset: { assignedTeam: 1 } });
+      }
+      if (addedIds.length > 0) {
+        await Student.updateMany({ _id: { $in: addedIds } }, { assignedTeam: team._id });
+      }
+
+      team.members = members;
+    }
+
     if (name) team.name = name.trim();
-    if (project !== undefined) team.project = project || undefined;
+    if (project !== undefined) {
+      // If changing project, unset old project's team link
+      if (team.project && team.project.toString() !== (project || '').toString()) {
+        await Project.findByIdAndUpdate(team.project, { $unset: { team: 1 } });
+      }
+      team.project = project || undefined;
+    }
     if (facultyMentor !== undefined) team.facultyMentor = facultyMentor || undefined;
-    if (Array.isArray(members)) team.members = members;
 
     await team.save();
 
@@ -186,6 +365,10 @@ const inviteMember = async (req, res, next) => {
       return errorResponse(res, 'Team not found', null, 404);
     }
 
+    if (req.user.role === 'UNIVERSITY' && team.university.toString() !== req.user.id) {
+      return errorResponse(res, 'Unauthorized to modify team of another institution', null, 403);
+    }
+
     // Permission enforcement: Only Team Lead, University Coordinator, or Admin can invite
     let isLead = false;
     if (req.user.role === 'STUDENT') {
@@ -237,6 +420,28 @@ const inviteMember = async (req, res, next) => {
     );
     if (alreadyMember) {
       return errorResponse(res, 'Student is already a member or has a pending invitation in this team.', null, 400);
+    }
+
+    if (req.user.role === 'UNIVERSITY' && studentToInvite.university?.toString() !== team.university.toString()) {
+      return errorResponse(res, `Student "${studentToInvite.name}" belongs to another university`, null, 400);
+    }
+
+    const activeOtherTeam = await Team.findOne({
+      _id: { $ne: team._id },
+      members: {
+        $elemMatch: {
+          student: studentToInvite._id,
+          status: { $in: ['ACCEPTED', 'INVITED'] }
+        }
+      }
+    });
+    if (activeOtherTeam) {
+      return errorResponse(
+        res,
+        `Student "${studentToInvite.name}" is already an active member of team "${activeOtherTeam.name}". Each student can belong to only one active team.`,
+        null,
+        400
+      );
     }
 
     team.members.push({
@@ -372,6 +577,10 @@ const updateMember = async (req, res, next) => {
       return errorResponse(res, 'Team not found', null, 404);
     }
 
+    if (req.user.role === 'UNIVERSITY' && team.university.toString() !== req.user.id) {
+      return errorResponse(res, 'Unauthorized to modify team of another institution', null, 403);
+    }
+
     // Permission: Team Lead, University, Admin, or member editing own responsibility
     let isLead = false;
     let isSelf = false;
@@ -434,6 +643,10 @@ const removeMember = async (req, res, next) => {
     const team = await Team.findById(id).populate('members.student');
     if (!team) {
       return errorResponse(res, 'Team not found', null, 404);
+    }
+
+    if (req.user.role === 'UNIVERSITY' && team.university.toString() !== req.user.id) {
+      return errorResponse(res, 'Unauthorized to modify team of another institution', null, 403);
     }
 
     let isLead = false;

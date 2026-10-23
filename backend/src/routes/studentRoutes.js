@@ -28,7 +28,7 @@ const upload = require('../middleware/uploadMiddleware');
 
 router.use(protect);
 
-router.get('/', getStudents);
+router.get('/', authorize('UNIVERSITY', 'STUDENT', 'ADMIN'), getStudents);
 router.get('/dashboard', authorize('STUDENT'), getStudentDashboard);
 router.get('/challenges', authorize('STUDENT'), getStudentChallenges);
 router.get('/projects', authorize('STUDENT'), getStudentProjects);

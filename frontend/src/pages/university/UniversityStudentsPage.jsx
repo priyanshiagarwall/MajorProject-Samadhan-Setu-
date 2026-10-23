@@ -2,24 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { projectService } from '../../services/projectService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import Badge from '../../components/common/Badge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   Users,
   Plus,
   Trash2,
-  Code2,
   Mail,
-  GraduationCap,
   Users2,
   CheckCircle,
   X,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 const UniversityStudentsPage = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Add Student Modal
   const [showModal, setShowModal] = useState(false);
@@ -30,18 +30,24 @@ const UniversityStudentsPage = () => {
   const [skills, setSkills] = useState('');
   const [expertise, setExpertise] = useState('');
 
+  // Remove Student in-app confirmation modal
+  const [removingStudent, setRemovingStudent] = useState(null);
+  const [removing, setRemoving] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const fetchStudents = async () => {
     setLoading(true);
+    setError(null);
+    setErrorMsg('');
     try {
       const res = await projectService.getStudents();
       setStudents(res.data?.students || []);
     } catch (err) {
       console.error(err);
-      setErrorMsg('Failed to load student innovators directory');
+      setError(err.message || 'Failed to load student innovators directory');
     } finally {
       setLoading(false);
     }
@@ -84,16 +90,21 @@ const UniversityStudentsPage = () => {
     }
   };
 
-  const handleRemoveStudent = async (id, sName) => {
-    if (!window.confirm(`Are you sure you want to remove ${sName} from active student directory?`)) return;
+  const handleConfirmRemove = async () => {
+    if (!removingStudent) return;
 
+    setRemoving(true);
+    setErrorMsg('');
     try {
-      await projectService.removeStudent(id);
-      setActionSuccess(`Student ${sName} removed from active roster.`);
+      await projectService.removeStudent(removingStudent._id);
+      setActionSuccess(`Student ${removingStudent.name} removed from active roster.`);
+      setRemovingStudent(null);
       fetchStudents();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
-      alert(err.message || 'Failed to remove student');
+      setErrorMsg(err.message || 'Failed to remove student');
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -145,6 +156,13 @@ const UniversityStudentsPage = () => {
 
       {loading ? (
         <LoadingState message="Loading student innovators & technical competencies..." />
+      ) : error ? (
+        <ErrorState
+          title="Failed to Load Student Directory"
+          message={error}
+          onRetry={fetchStudents}
+          retryLabel="Retry Loading Students"
+        />
       ) : students.length === 0 ? (
         <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-3">
           <p className="font-bold text-gov-navy text-sm">No Students Registered</p>
@@ -163,15 +181,15 @@ const UniversityStudentsPage = () => {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-bold text-gov-navy text-sm leading-snug">
-                      {s.name}
+                      {s.name || 'Not provided'}
                     </h3>
                     <div className="text-[11px] text-gov-maroon font-semibold">
-                      {s.department}
+                      {s.department || 'Not provided'}
                     </div>
                   </div>
                   <button
-                    onClick={() => handleRemoveStudent(s._id, s.name)}
-                    className="text-gray-300 hover:text-red-600 p-1"
+                    onClick={() => setRemovingStudent(s)}
+                    className="text-gray-300 hover:text-red-600 p-1 rounded-xs transition-colors"
                     title="Remove Student Profile"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -181,22 +199,22 @@ const UniversityStudentsPage = () => {
                 <div className="p-2 bg-gov-sand-50 rounded-xs border border-gov-border text-xs space-y-1">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-gray-500">Year:</span>
-                    <span className="font-bold text-gov-navy">{s.year}</span>
+                    <span className="font-bold text-gov-navy">{s.year || 'Not provided'}</span>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-gray-500 pt-1 border-t border-gov-border">
                     <span className="flex items-center truncate">
                       <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                      {s.email}
+                      {s.email || 'Not provided'}
                     </span>
                   </div>
                 </div>
 
                 {/* Skills */}
-                {s.skills && s.skills.length > 0 && (
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gov-text-muted block mb-1">
-                      Technical Skills
-                    </span>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-gov-text-muted block mb-1">
+                    Technical Skills
+                  </span>
+                  {s.skills && s.skills.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {s.skills.map((sk, idx) => (
                         <span
@@ -207,16 +225,20 @@ const UniversityStudentsPage = () => {
                         </span>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <span className="text-gray-400 italic text-[10px]">Not provided</span>
+                  )}
+                </div>
               </div>
 
               {/* Team Assignment */}
               <div className="pt-2 border-t border-gov-border text-[11px]">
                 {s.assignedTeam ? (
                   <span className="text-indigo-900 font-bold flex items-center">
-                    <Users2 className="w-3.5 h-3.5 mr-1 text-indigo-600" />
-                    Team Assigned
+                    <Users2 className="w-3.5 h-3.5 mr-1 text-indigo-600 flex-shrink-0" />
+                    <span className="truncate" title={s.assignedTeam.name}>
+                      Team: {s.assignedTeam.name || 'Not provided'}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-gray-400 italic">Available for Cohort</span>
@@ -338,6 +360,44 @@ const UniversityStudentsPage = () => {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Confirmation Modal: Remove Student */}
+      {removingStudent && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-gov-border rounded-sm max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-2 text-rose-700 border-b border-gov-border pb-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <h3 className="font-bold text-gov-navy text-base">
+                Remove Student &quot;{removingStudent.name}&quot;?
+              </h3>
+            </div>
+
+            <p className="text-xs text-gov-text-secondary leading-relaxed">
+              Are you sure you want to remove <strong>{removingStudent.name}</strong> from the active student directory? If this student is currently assigned to a multidisciplinary cohort, they will be removed from team membership.
+            </p>
+
+            <div className="pt-2 flex items-center justify-end space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRemovingStudent(null)}
+                disabled={removing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmRemove}
+                disabled={removing}
+                className="bg-rose-700 hover:bg-rose-800 text-white"
+              >
+                {removing ? 'Removing...' : 'Remove Student'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
