@@ -91,7 +91,7 @@ const UniversityHeader = ({ onToggleSidebar }) => {
             </div>
             <div className="hidden sm:block text-left">
               <div className="text-xs font-bold text-gov-navy leading-tight truncate max-w-[160px]">
-                {user?.name || 'Delhi Technological University'}
+                {user?.name || 'Higher Education Institution'}
               </div>
               <div className="text-[10px] text-gov-maroon font-semibold">
                 ACADEMIC PARTNER

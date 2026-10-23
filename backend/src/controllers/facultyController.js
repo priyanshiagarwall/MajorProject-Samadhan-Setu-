@@ -1,4 +1,6 @@
 const Faculty = require('../models/Faculty');
+const Project = require('../models/Project');
+const Team = require('../models/Team');
 const User = require('../models/User');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 
@@ -213,7 +215,13 @@ const removeFaculty = async (req, res, next) => {
     }
 
     faculty.isActive = false;
+    faculty.assignedProjects = [];
     await faculty.save();
+
+    await Promise.all([
+      Project.updateMany({ mentor: id }, { $unset: { mentor: 1 } }),
+      Team.updateMany({ facultyMentor: id }, { $unset: { facultyMentor: 1 } })
+    ]);
 
     return successResponse(res, 'Faculty mentor removed successfully');
   } catch (error) {

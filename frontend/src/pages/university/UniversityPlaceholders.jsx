@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { universityService } from '../../services/universityService';
+import { projectService } from '../../services/projectService';
 import { notificationService } from '../../services/notificationService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -121,17 +122,130 @@ export const UniversityAssignedPage = () => {
  * Mentors Page (/university/mentors)
  */
 export const UniversityMentorsPage = () => {
+  const [faculty, setFaculty] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const fetchData = async () => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const [facRes, projRes] = await Promise.all([
+        projectService.getFaculty(),
+        projectService.getProjects()
+      ]);
+      setFaculty(facRes.data?.faculty || []);
+      setProjects(projRes.data?.projects || []);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Failed to load mentorship directory');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   return (
     <div className="space-y-6 font-serif">
-      <div>
-        <h1 className="text-2xl font-bold text-gov-navy">Industry & Nodal Mentors</h1>
-        <p className="text-xs text-gov-text-secondary mt-0.5">
-          Corporate leaders, retired civil engineers, and GNCTD technical advisors providing ground guidance.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gov-navy">
+            Academic & Project Mentors ({faculty.length})
+          </h1>
+          <p className="text-xs text-gov-text-secondary mt-0.5">
+            Faculty guides and technical mentors supervising active student research cohorts.
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button variant="subtle" size="sm" onClick={fetchData} icon={RefreshCw}>
+            Refresh
+          </Button>
+          <Link to="/university/faculty">
+            <Button variant="primary" size="sm" icon={GraduationCap} className="bg-gov-maroon text-white">
+              Faculty Directory
+            </Button>
+          </Link>
+        </div>
       </div>
-      <Card accent="none" className="p-6 text-xs text-gov-text-secondary">
-        <p>Ecosystem mentorship sessions and field milestone evaluation committees for Delhi ward pilots.</p>
-      </Card>
+
+      {loading ? (
+        <LoadingState message="Loading mentorship directory..." />
+      ) : errorMsg ? (
+        <Card accent="none" className="py-8 text-center text-xs text-rose-700 space-y-2">
+          <p className="font-semibold">{errorMsg}</p>
+          <Button variant="outline" size="sm" onClick={fetchData} icon={RefreshCw}>
+            Retry
+          </Button>
+        </Card>
+      ) : faculty.length === 0 ? (
+        <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-2">
+          <p className="font-bold text-gov-navy text-sm">No Mentors Currently Registered</p>
+          <p className="max-w-md mx-auto text-[11px]">
+            No faculty members are currently on the mentorship roster for this university.
+          </p>
+          <Link to="/university/faculty" className="inline-block mt-2">
+            <Button variant="primary" size="sm" icon={Plus}>
+              Add Faculty Mentor
+            </Button>
+          </Link>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {faculty.map((m) => {
+            const assignedCount = m.assignedProjects?.length || 0;
+            return (
+              <Card key={m._id} accent="navy" className="p-5 space-y-3">
+                <div className="flex items-start justify-between gap-2 border-b border-gov-border pb-2">
+                  <div>
+                    <h3 className="font-bold text-gov-navy text-sm">{m.name || 'Not provided'}</h3>
+                    <p className="text-[11px] text-gov-maroon font-semibold">{m.department || 'Not provided'}</p>
+                  </div>
+                  <Badge variant={assignedCount > 0 ? 'success' : 'neutral'}>
+                    {assignedCount > 0 ? `${assignedCount} Active Project${assignedCount > 1 ? 's' : ''}` : 'Available'}
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-[11px] text-gov-text-secondary">
+                    <span>Specialization:</span>
+                    <span className="font-semibold text-gov-navy">{m.specialization || 'Not provided'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-gov-text-secondary">
+                    <span>Experience:</span>
+                    <span className="font-semibold text-gov-navy">{m.experience || 'Not provided'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-gov-text-secondary">
+                    <span>Email:</span>
+                    <span className="font-semibold text-gov-navy">{m.email || 'Not provided'}</span>
+                  </div>
+                </div>
+
+                {m.assignedProjects && m.assignedProjects.length > 0 && (
+                  <div className="pt-2 border-t border-gov-border text-[11px] space-y-1">
+                    <span className="font-bold text-gov-navy text-[10px] uppercase tracking-wider block">Supervised Projects:</span>
+                    <ul className="space-y-1">
+                      {m.assignedProjects.map((p) => {
+                        const pTitle = typeof p === 'object' && p.title ? p.title : (typeof p === 'string' ? p : 'Not provided');
+                        const pKey = typeof p === 'object' && p._id ? p._id : p;
+                        return (
+                          <li key={pKey} className="text-gov-text-secondary flex items-center space-x-1.5 truncate" title={pTitle}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-gov-maroon flex-shrink-0" />
+                            <span className="truncate">{pTitle}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

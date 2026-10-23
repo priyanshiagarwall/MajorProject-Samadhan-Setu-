@@ -69,6 +69,20 @@ const buildUniversityEligibilityFilter = (userId) => {
   };
 };
 
+const VALID_DELHI_DISTRICTS = [
+  'Central Delhi',
+  'East Delhi',
+  'New Delhi',
+  'North Delhi',
+  'North East Delhi',
+  'North West Delhi',
+  'Shahdara',
+  'South Delhi',
+  'South East Delhi',
+  'South West Delhi',
+  'West Delhi'
+];
+
 /**
  * Get or create profile for authenticated University
  * GET /api/universities/profile
@@ -79,55 +93,20 @@ const getProfile = async (req, res, next) => {
     let university = await University.findOne({ user: userId });
 
     if (!university) {
-      // Auto-provision initial institutional profile using User record
+      // Auto-provision clean initial institutional profile using authentic User record
       const user = await User.findById(userId);
       university = await University.create({
         user: userId,
-        name: user.name || 'Delhi Higher Education Research Partner',
-        campus: 'Main Technical Campus, Delhi',
-        district: user.district || 'North West Delhi',
-        departments: [
-          'Department of Computer Science & Engineering',
-          'Department of Environmental Engineering',
-          'Department of Electrical & Electronics',
-          'Department of Civil & Urban Planning'
-        ],
-        researchAreas: [
-          'Municipal IoT Telemetry & Environmental Sensors',
-          'Autonomous Water Filtration & Leachate Treatment',
-          'Clean Energy & Micro-grid Solar Harvesting',
-          'Accessibility Technologies for Transit Commuters'
-        ],
-        expertise: [
-          'AI/ML',
-          'IoT',
-          'Environmental Engineering',
-          'Water Management',
-          'Renewable Energy',
-          'Accessibility'
-        ],
-        labsAndFacilities: [
-          'Centre for Environmental Biotechnology & Biogas Lab',
-          'Autonomous Smart Sensing & IoT Systems Lab',
-          'Solar Photovoltaic Testing Facility',
-          'Rapid Prototyping & Fabrication Workshop (FabLab)'
-        ],
-        innovationCentre: 'Delhi Technological University Innovation Council (DTU-IC)',
-        incubationFacilities: 'TBI Delhi Innovation Incubation Centre (DST Supported)',
-        facultySpecializations: [
-          {
-            facultyName: 'Prof. S. K. Sharma',
-            department: 'Environmental Engineering',
-            specialization: 'Biomethanation & Anaerobic Digestion',
-            email: 'sksharma@dtu.ac.in'
-          },
-          {
-            facultyName: 'Dr. Radhika Sen',
-            department: 'Computer Science',
-            specialization: 'Computer Vision & Commuter Telemetry',
-            email: 'radhika.sen@dtu.ac.in'
-          }
-        ],
+        name: user?.name || user?.organization || 'Higher Education Partner',
+        campus: '',
+        district: (user?.district && VALID_DELHI_DISTRICTS.includes(user.district)) ? user.district : 'Central Delhi',
+        departments: [],
+        researchAreas: [],
+        expertise: [],
+        labsAndFacilities: [],
+        innovationCentre: '',
+        incubationFacilities: '',
+        facultySpecializations: [],
         studentTeamsCount: 0,
         facultyMentorsCount: 0
       });
@@ -159,34 +138,167 @@ const updateProfile = async (req, res, next) => {
       labsAndFacilities,
       innovationCentre,
       incubationFacilities,
-      facultySpecializations,
-      studentTeamsCount,
-      facultyMentorsCount
+      facultySpecializations
     } = req.body;
 
     let university = await University.findOne({ user: userId });
     if (!university) {
-      university = new University({ user: userId, name: req.user.name || 'University' });
+      const user = await User.findById(userId);
+      university = new University({
+        user: userId,
+        name: user?.name || user?.organization || 'University'
+      });
     }
 
-    if (name) university.name = name.trim();
-    if (campus) university.campus = campus.trim();
-    if (district) university.district = district;
-    if (Array.isArray(departments)) university.departments = departments;
-    if (Array.isArray(researchAreas)) university.researchAreas = researchAreas;
-    if (Array.isArray(expertise)) university.expertise = expertise;
-    if (Array.isArray(labsAndFacilities)) university.labsAndFacilities = labsAndFacilities;
-    if (innovationCentre) university.innovationCentre = innovationCentre.trim();
-    if (incubationFacilities) university.incubationFacilities = incubationFacilities.trim();
-    if (Array.isArray(facultySpecializations)) university.facultySpecializations = facultySpecializations;
-    if (studentTeamsCount !== undefined) university.studentTeamsCount = Number(studentTeamsCount);
-    if (facultyMentorsCount !== undefined) university.facultyMentorsCount = Number(facultyMentorsCount);
+    // Name validation
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return errorResponse(res, 'University name cannot be empty', null, 400);
+      }
+      if (name.trim().length > 120) {
+        return errorResponse(res, 'University name cannot exceed 120 characters', null, 400);
+      }
+      university.name = name.trim();
+    }
+
+    // Campus validation
+    if (campus !== undefined) {
+      if (typeof campus !== 'string') {
+        return errorResponse(res, 'Campus location must be a string', null, 400);
+      }
+      if (campus.trim().length > 200) {
+        return errorResponse(res, 'Campus location cannot exceed 200 characters', null, 400);
+      }
+      university.campus = campus.trim();
+    }
+
+    // District validation against Delhi revenue district schema enum
+    if (district !== undefined) {
+      if (typeof district !== 'string' || !VALID_DELHI_DISTRICTS.includes(district.trim())) {
+        return errorResponse(res, 'Invalid Delhi district specified', null, 400);
+      }
+      university.district = district.trim();
+    }
+
+    // Innovation Centre validation
+    if (innovationCentre !== undefined) {
+      if (typeof innovationCentre !== 'string') {
+        return errorResponse(res, 'Innovation centre must be a string', null, 400);
+      }
+      if (innovationCentre.trim().length > 200) {
+        return errorResponse(res, 'Innovation centre cannot exceed 200 characters', null, 400);
+      }
+      university.innovationCentre = innovationCentre.trim();
+    }
+
+    // Incubation Facilities validation
+    if (incubationFacilities !== undefined) {
+      if (typeof incubationFacilities !== 'string') {
+        return errorResponse(res, 'Incubation facilities must be a string', null, 400);
+      }
+      if (incubationFacilities.trim().length > 200) {
+        return errorResponse(res, 'Incubation facilities cannot exceed 200 characters', null, 400);
+      }
+      university.incubationFacilities = incubationFacilities.trim();
+    }
+
+    // Departments array validation
+    if (departments !== undefined) {
+      if (!Array.isArray(departments)) {
+        return errorResponse(res, 'Departments must be an array', null, 400);
+      }
+      if (departments.length > 50) {
+        return errorResponse(res, 'Cannot exceed 50 departments', null, 400);
+      }
+      university.departments = departments
+        .map((d) => (typeof d === 'string' ? d.trim() : ''))
+        .filter(Boolean)
+        .map((d) => d.slice(0, 150));
+    }
+
+    // Research Areas array validation
+    if (researchAreas !== undefined) {
+      if (!Array.isArray(researchAreas)) {
+        return errorResponse(res, 'Research areas must be an array', null, 400);
+      }
+      if (researchAreas.length > 50) {
+        return errorResponse(res, 'Cannot exceed 50 research areas', null, 400);
+      }
+      university.researchAreas = researchAreas
+        .map((r) => (typeof r === 'string' ? r.trim() : ''))
+        .filter(Boolean)
+        .map((r) => r.slice(0, 150));
+    }
+
+    // Expertise array validation (deduplicated for AI matching)
+    if (expertise !== undefined) {
+      if (!Array.isArray(expertise)) {
+        return errorResponse(res, 'Expertise must be an array', null, 400);
+      }
+      if (expertise.length > 50) {
+        return errorResponse(res, 'Cannot exceed 50 expertise tags', null, 400);
+      }
+      const cleanedExpertise = [
+        ...new Set(
+          expertise
+            .map((e) => (typeof e === 'string' ? e.trim() : ''))
+            .filter(Boolean)
+            .map((e) => e.slice(0, 80))
+        )
+      ];
+      university.expertise = cleanedExpertise;
+    }
+
+    // Labs & Facilities array validation
+    if (labsAndFacilities !== undefined) {
+      if (!Array.isArray(labsAndFacilities)) {
+        return errorResponse(res, 'Labs and facilities must be an array', null, 400);
+      }
+      if (labsAndFacilities.length > 50) {
+        return errorResponse(res, 'Cannot exceed 50 lab facilities', null, 400);
+      }
+      university.labsAndFacilities = labsAndFacilities
+        .map((l) => (typeof l === 'string' ? l.trim() : ''))
+        .filter(Boolean)
+        .map((l) => l.slice(0, 150));
+    }
+
+    // Faculty Specializations array validation
+    if (facultySpecializations !== undefined) {
+      if (!Array.isArray(facultySpecializations)) {
+        return errorResponse(res, 'Faculty specializations must be an array', null, 400);
+      }
+      if (facultySpecializations.length > 50) {
+        return errorResponse(res, 'Cannot exceed 50 faculty specializations', null, 400);
+      }
+      const validFac = [];
+      for (const f of facultySpecializations) {
+        if (typeof f === 'object' && f !== null) {
+          const fName = (f.facultyName || '').toString().trim().slice(0, 100);
+          const fDept = (f.department || '').toString().trim().slice(0, 100);
+          const fSpec = (f.specialization || '').toString().trim().slice(0, 150);
+          const fEmail = (f.email || '').toString().trim().toLowerCase().slice(0, 100);
+          if (fName && fDept && fSpec) {
+            validFac.push({
+              facultyName: fName,
+              department: fDept,
+              specialization: fSpec,
+              email: fEmail
+            });
+          }
+        }
+      }
+      university.facultySpecializations = validFac;
+    }
 
     await university.save();
 
-    // Also synchronize user organization if name changed
-    if (name) {
-      await User.findByIdAndUpdate(userId, { name: name.trim(), organization: name.trim() });
+    // Synchronize User name and organization if name changed
+    if (name !== undefined) {
+      await User.findByIdAndUpdate(userId, {
+        name: university.name,
+        organization: university.name
+      });
     }
 
     return successResponse(res, 'University profile updated successfully', {

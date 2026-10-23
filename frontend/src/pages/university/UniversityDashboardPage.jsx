@@ -78,11 +78,11 @@ const UniversityDashboardPage = () => {
             Higher Education Research Workbench
           </div>
           <h1 className="text-2xl font-bold text-gov-navy">
-            {profile?.name || 'Delhi Technological University (DTU)'}
+            {profile?.name || 'Higher Education Research Workbench'}
           </h1>
           <p className="text-xs text-gov-text-secondary mt-0.5">
-            {profile?.campus || 'Shahbad Daulatpur, Bawana Road, Delhi'} &bull; District:{' '}
-            <strong>{profile?.district || 'North West Delhi'}</strong>
+            {profile?.campus || 'Campus not specified'} &bull; District:{' '}
+            <strong>{profile?.district || 'Delhi'}</strong>
           </p>
         </div>
 

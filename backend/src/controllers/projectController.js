@@ -1463,10 +1463,32 @@ const assignMentor = async (req, res, next) => {
       return errorResponse(res, 'Unauthorized: Only the assigned university or administrator can assign faculty mentors', null, 403);
     }
 
+    if (req.user.role === 'UNIVERSITY') {
+      const pUniId = (project.universityId?._id || project.universityId)?.toString();
+      const fUniId = (faculty.university?._id || faculty.university)?.toString();
+      if (!pUniId || !fUniId || pUniId !== fUniId) {
+        return errorResponse(res, 'Unauthorized: Faculty mentor belongs to another university', null, 400);
+      }
+      if (!faculty.isActive) {
+        return errorResponse(res, 'Cannot assign an inactive faculty mentor', null, 400);
+      }
+    }
+
+    if (project.mentor && project.mentor.toString() !== facultyId.toString()) {
+      await Faculty.findByIdAndUpdate(project.mentor, {
+        $pull: { assignedProjects: project._id }
+      });
+    }
+
     project.mentor = facultyId;
     await project.save();
 
     await faculty.updateOne({ $addToSet: { assignedProjects: project._id } });
+
+    if (project.team) {
+      await Team.findByIdAndUpdate(project.team, { facultyMentor: facultyId });
+    }
+    await Team.updateMany({ project: project._id }, { facultyMentor: facultyId });
 
     return successResponse(res, 'Faculty mentor assigned to project', { project });
   } catch (error) {

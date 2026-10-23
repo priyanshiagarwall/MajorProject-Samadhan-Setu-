@@ -4,6 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   DELHI_DISTRICTS
 } from '../../utils/constants';
@@ -45,11 +46,12 @@ const UniversityProfilePage = () => {
   // Form states
   const [name, setName] = useState('');
   const [campus, setCampus] = useState('');
-  const [district, setDistrict] = useState('North West Delhi');
+  const [district, setDistrict] = useState('');
   const [innovationCentre, setInnovationCentre] = useState('');
   const [incubationFacilities, setIncubationFacilities] = useState('');
 
-  // Tag arrays
+  // Tag arrays & Presets
+  const [presetTags, setPresetTags] = useState(PRESET_EXPERTISE_TAGS);
   const [expertise, setExpertise] = useState([]);
   const [customTag, setCustomTag] = useState('');
   const [departments, setDepartments] = useState([]);
@@ -68,13 +70,14 @@ const UniversityProfilePage = () => {
 
   const fetchProfile = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const res = await universityService.getProfile();
       const u = res.data?.university || {};
       setProfile(u);
       setName(u.name || '');
       setCampus(u.campus || '');
-      setDistrict(u.district || 'North West Delhi');
+      setDistrict(u.district || '');
       setInnovationCentre(u.innovationCentre || '');
       setIncubationFacilities(u.incubationFacilities || '');
       setExpertise(u.expertise || []);
@@ -82,8 +85,12 @@ const UniversityProfilePage = () => {
       setResearchAreas(u.researchAreas || []);
       setLabs(u.labsAndFacilities || []);
       setFaculty(u.facultySpecializations || []);
+      if (res.data?.availableExpertiseTags && Array.isArray(res.data.availableExpertiseTags)) {
+        setPresetTags(res.data.availableExpertiseTags);
+      }
     } catch (err) {
-      setErrorMsg('Failed to load university profile');
+      console.error(err);
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to load university profile');
     } finally {
       setLoading(false);
     }
@@ -139,12 +146,12 @@ const UniversityProfilePage = () => {
 
   const handleAddFaculty = (e) => {
     e.preventDefault();
-    if (!newFacName.trim() || !newFacSpec.trim()) return;
+    if (!newFacName.trim() || !newFacDept.trim() || !newFacSpec.trim()) return;
     setFaculty([
       ...faculty,
       {
         facultyName: newFacName.trim(),
-        department: newFacDept.trim() || 'Engineering',
+        department: newFacDept.trim(),
         specialization: newFacSpec.trim(),
         email: newFacEmail.trim()
       }
@@ -183,7 +190,7 @@ const UniversityProfilePage = () => {
       setSuccessMsg('University institutional profile and expertise tags updated successfully in GNCTD directory!');
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to save university profile');
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to save university profile');
     } finally {
       setSaving(false);
     }
@@ -191,6 +198,18 @@ const UniversityProfilePage = () => {
 
   if (loading) {
     return <LoadingState message="Loading institutional research profile..." />;
+  }
+
+  if (errorMsg && !profile) {
+    return (
+      <div className="py-8 font-serif max-w-5xl mx-auto">
+        <ErrorState
+          title="Unable to Load University Profile"
+          message={errorMsg}
+          onRetry={fetchProfile}
+        />
+      </div>
+    );
   }
 
   return (
@@ -244,7 +263,7 @@ const UniversityProfilePage = () => {
                 required
                 value={campus}
                 onChange={(e) => setCampus(e.target.value)}
-                placeholder="e.g. Shahbad Daulatpur, Bawana Road, Delhi 110042"
+                placeholder="e.g. Main Institutional Campus, Pusa Road, Delhi 110012"
                 className="w-full font-serif border border-gov-border rounded-xs px-3 py-2 focus:ring-1 focus:ring-gov-navy outline-none"
               />
             </div>
@@ -258,6 +277,7 @@ const UniversityProfilePage = () => {
                 onChange={(e) => setDistrict(e.target.value)}
                 className="w-full font-serif border border-gov-border rounded-xs px-3 py-2 bg-white focus:ring-1 focus:ring-gov-navy outline-none"
               >
+                <option value="" disabled>Select Delhi Revenue District</option>
                 {DELHI_DISTRICTS.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -274,7 +294,7 @@ const UniversityProfilePage = () => {
                 type="text"
                 value={innovationCentre}
                 onChange={(e) => setInnovationCentre(e.target.value)}
-                placeholder="e.g. DTU Innovation and Incubation Foundation"
+                placeholder="e.g. University Innovation and Incubation Council"
                 className="w-full font-serif border border-gov-border rounded-xs px-3 py-2 focus:ring-1 focus:ring-gov-navy outline-none"
               />
             </div>
@@ -307,7 +327,7 @@ const UniversityProfilePage = () => {
                 Click to Toggle Standard Expertise Tags
               </span>
               <div className="flex flex-wrap gap-2">
-                {PRESET_EXPERTISE_TAGS.map((tag) => {
+                {presetTags.map((tag) => {
                   const selected = expertise.includes(tag);
                   return (
                     <button
@@ -353,21 +373,25 @@ const UniversityProfilePage = () => {
                 Active Tags Registered in Directory ({expertise.length}):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {expertise.map((exp, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex items-center px-2 py-0.5 rounded-xs bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-semibold"
-                  >
-                    <span>{exp}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleExpertise(exp)}
-                      className="ml-1.5 text-indigo-500 hover:text-indigo-800"
+                {expertise.length === 0 ? (
+                  <span className="text-[11px] text-gov-text-muted italic">No expertise tags selected yet</span>
+                ) : (
+                  expertise.map((exp, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center px-2 py-0.5 rounded-xs bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-semibold"
                     >
-                      &times;
-                    </button>
-                  </span>
-                ))}
+                      <span>{exp}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleExpertise(exp)}
+                        className="ml-1.5 text-indigo-500 hover:text-indigo-800"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -379,21 +403,25 @@ const UniversityProfilePage = () => {
           <Card accent="none" title="Departments">
             <div className="space-y-3 text-xs">
               <div className="space-y-1 max-h-40 overflow-y-auto">
-                {departments.map((dept, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
-                  >
-                    <span className="truncate mr-2">{dept}</span>
-                    <button
-                      type="button"
-                      onClick={() => setDepartments(departments.filter((_, i) => i !== idx))}
-                      className="text-gray-400 hover:text-red-600"
+                {departments.length === 0 ? (
+                  <p className="text-[11px] text-gov-text-muted italic py-1">No departments registered yet</p>
+                ) : (
+                  departments.map((dept, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
                     >
-                      &times;
-                    </button>
-                  </div>
-                ))}
+                      <span className="truncate mr-2">{dept}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDepartments(departments.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex items-center space-x-1 pt-1 border-t border-gov-border">
@@ -415,21 +443,25 @@ const UniversityProfilePage = () => {
           <Card accent="none" title="Research Areas">
             <div className="space-y-3 text-xs">
               <div className="space-y-1 max-h-40 overflow-y-auto">
-                {researchAreas.map((res, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
-                  >
-                    <span className="truncate mr-2">{res}</span>
-                    <button
-                      type="button"
-                      onClick={() => setResearchAreas(researchAreas.filter((_, i) => i !== idx))}
-                      className="text-gray-400 hover:text-red-600"
+                {researchAreas.length === 0 ? (
+                  <p className="text-[11px] text-gov-text-muted italic py-1">No research areas registered yet</p>
+                ) : (
+                  researchAreas.map((res, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
                     >
-                      &times;
-                    </button>
-                  </div>
-                ))}
+                      <span className="truncate mr-2">{res}</span>
+                      <button
+                        type="button"
+                        onClick={() => setResearchAreas(researchAreas.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex items-center space-x-1 pt-1 border-t border-gov-border">
@@ -451,21 +483,25 @@ const UniversityProfilePage = () => {
           <Card accent="none" title="Labs & Facilities">
             <div className="space-y-3 text-xs">
               <div className="space-y-1 max-h-40 overflow-y-auto">
-                {labs.map((lab, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
-                  >
-                    <span className="truncate mr-2">{lab}</span>
-                    <button
-                      type="button"
-                      onClick={() => setLabs(labs.filter((_, i) => i !== idx))}
-                      className="text-gray-400 hover:text-red-600"
+                {labs.length === 0 ? (
+                  <p className="text-[11px] text-gov-text-muted italic py-1">No lab facilities registered yet</p>
+                ) : (
+                  labs.map((lab, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-1.5 bg-gov-sand-50 rounded-xs border border-gov-border text-[11px]"
                     >
-                      &times;
-                    </button>
-                  </div>
-                ))}
+                      <span className="truncate mr-2">{lab}</span>
+                      <button
+                        type="button"
+                        onClick={() => setLabs(labs.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex items-center space-x-1 pt-1 border-t border-gov-border">
@@ -500,23 +536,31 @@ const UniversityProfilePage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gov-border bg-white">
-                  {faculty.map((f, idx) => (
-                    <tr key={idx} className="hover:bg-gov-sand-50">
-                      <td className="px-3 py-2 font-bold text-gov-navy">{f.facultyName}</td>
-                      <td className="px-3 py-2 text-gov-text-secondary">{f.department}</td>
-                      <td className="px-3 py-2 font-medium text-emerald-800">{f.specialization}</td>
-                      <td className="px-3 py-2 text-gov-text-muted">{f.email || '--'}</td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFaculty(idx)}
-                          className="text-gray-400 hover:text-red-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 ml-auto" />
-                        </button>
+                  {faculty.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-3 py-4 text-center text-gov-text-muted italic text-[11px]">
+                        No faculty specializations listed. Add faculty mentors below.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    faculty.map((f, idx) => (
+                      <tr key={idx} className="hover:bg-gov-sand-50">
+                        <td className="px-3 py-2 font-bold text-gov-navy">{f.facultyName || 'Not provided'}</td>
+                        <td className="px-3 py-2 text-gov-text-secondary">{f.department || 'Not provided'}</td>
+                        <td className="px-3 py-2 font-medium text-emerald-800">{f.specialization || 'Not provided'}</td>
+                        <td className="px-3 py-2 text-gov-text-muted">{f.email || 'Not provided'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFaculty(idx)}
+                            className="text-gray-400 hover:text-red-600 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 ml-auto" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -538,7 +582,7 @@ const UniversityProfilePage = () => {
                   type="text"
                   value={newFacDept}
                   onChange={(e) => setNewFacDept(e.target.value)}
-                  placeholder="Department"
+                  placeholder="Department * (Required)"
                   className="border border-gov-border rounded-xs px-2.5 py-1 text-xs bg-white"
                 />
                 <input
