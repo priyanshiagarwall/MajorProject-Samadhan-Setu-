@@ -6,7 +6,6 @@ const Project = require('../models/Project');
 const Team = require('../models/Team');
 const Faculty = require('../models/Faculty');
 const AuditLog = require('../models/AuditLog');
-const Notification = require('../models/Notification');
 const { dispatchNotification } = require('../services/notificationDispatcher');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 const { validateTransition } = require('../utils/validationWorkflow');

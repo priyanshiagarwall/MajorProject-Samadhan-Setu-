@@ -69,7 +69,14 @@ const UniversityHeader = ({ onToggleSidebar }) => {
             className="flex items-center space-x-2 p-1.5 rounded-sm hover:bg-gov-sand-50 transition-colors border border-transparent hover:border-gov-border"
           >
             <div className="w-7 h-7 rounded-sm bg-gov-navy text-white flex items-center justify-center font-bold text-xs border border-gov-border">
-              DTU
+              {user?.name
+                ? user.name
+                    .split(/\s+/)
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 3)
+                    .toUpperCase()
+                : 'U'}
             </div>
             <div className="hidden sm:block text-left">
               <div className="text-xs font-bold text-gov-navy leading-tight truncate max-w-[160px]">
