@@ -34,6 +34,99 @@ const DELHI_DISTRICTS = [
 ];
 
 /**
+ * Phase 11 Helper: Merge newly calculated AI university recommendations with existing recommendations.
+ * 
+ * Rules:
+ * 1. Preserves existing entries with status !== 'PENDING' (e.g. 'ACCEPTED', 'IGNORED') unchanged.
+ * 2. Preserves existing entries for universities that already expressed interest (in challenge.interestedUniversities).
+ * 3. Stale PENDING entries NOT present in the new strict result and without expressed interest are dropped.
+ * 4. Existing PENDING entries matching incoming recommendations update their score, percentage,
+ *    matchingReasons, explainableSummary, and universityName, while preserving original matchedAt and status.
+ * 5. Brand NEW incoming recommendations are added with status: 'PENDING' and matchedAt: new Date().
+ * 6. universityId stays the User ObjectId.
+ * 7. Sorted by score descending only (secondary sort by percentage descending).
+ */
+const mergeUniversityRecommendations = (existingRecs = [], newRecs = [], interestedUniversities = []) => {
+  const existingMap = new Map();
+  for (const rec of existingRecs) {
+    if (!rec || !rec.universityId) continue;
+    const idStr = rec.universityId.toString();
+    existingMap.set(idStr, rec.toObject ? rec.toObject() : { ...rec });
+  }
+
+  const interestedUniIds = new Set(
+    (interestedUniversities || [])
+      .map((i) => (i?.university ? i.university.toString() : null))
+      .filter(Boolean)
+  );
+
+  const merged = [];
+  const processedUniIds = new Set();
+
+  // 1. Process new strict recommendations
+  for (const nr of newRecs) {
+    if (!nr || !nr.universityId) continue;
+    const idStr = nr.universityId.toString();
+    const existing = existingMap.get(idStr);
+
+    const uniObjectId = mongoose.Types.ObjectId.isValid(nr.universityId)
+      ? new mongoose.Types.ObjectId(nr.universityId)
+      : nr.universityId;
+
+    if (existing) {
+      // Existing entry: keep status and matchedAt unchanged, update AI metrics
+      merged.push({
+        ...existing,
+        universityId: uniObjectId,
+        universityName: nr.universityName || existing.universityName,
+        score: nr.score,
+        percentage: nr.percentage,
+        matchingReasons: nr.matchingReasons,
+        explainableSummary: nr.explainableSummary,
+        status: existing.status || 'PENDING',
+        matchedAt: existing.matchedAt || new Date()
+      });
+    } else {
+      // Brand new entry: status PENDING and matchedAt = now
+      merged.push({
+        universityId: uniObjectId,
+        universityName: nr.universityName,
+        score: nr.score,
+        percentage: nr.percentage,
+        matchingReasons: nr.matchingReasons,
+        explainableSummary: nr.explainableSummary,
+        status: 'PENDING',
+        matchedAt: new Date()
+      });
+    }
+    processedUniIds.add(idStr);
+  }
+
+  // 2. Retain un-recommended universities if ACCEPTED/IGNORED or if they expressed interest
+  for (const [idStr, existing] of existingMap.entries()) {
+    if (!processedUniIds.has(idStr)) {
+      const isNonPending = existing.status && existing.status !== 'PENDING';
+      const hasExpressedInterest = interestedUniIds.has(idStr);
+
+      if (isNonPending || hasExpressedInterest) {
+        merged.push({
+          ...existing,
+          universityId: mongoose.Types.ObjectId.isValid(existing.universityId)
+            ? new mongoose.Types.ObjectId(existing.universityId)
+            : existing.universityId
+        });
+        processedUniIds.add(idStr);
+      }
+    }
+  }
+
+  // Sort by score descending only (secondary sort by percentage descending)
+  merged.sort((a, b) => (b.score || 0) - (a.score || 0) || (b.percentage || 0) - (a.percentage || 0));
+
+  return merged;
+};
+
+/**
  * Get comprehensive overview statistics and chart datasets
  * GET /api/admin/overview
  */
@@ -340,17 +433,26 @@ const validateChallenge = async (req, res, next) => {
       relatedEntityId: id
     });
 
-    // 3. AI-Assisted University Matching (Assistive, non-blocking)
+    // 3. AI-Assisted University Matching (Assistive, non-blocking, strict)
     try {
       const universities = await University.find({}).lean();
       if (universities && universities.length > 0) {
-        const recommendations = await aiService.matchUniversities(challenge, universities);
-        challenge.aiRecommendedUniversities = recommendations.map((r) => ({
-          ...r,
-          status: 'PENDING',
-          matchedAt: new Date()
-        }));
-        await challenge.save();
+        const matchResult = await aiService.matchUniversitiesStrict(challenge, universities, {
+          excludeEmptyProfiles: true
+        });
+
+        if (matchResult.success && matchResult.source === 'AI_SERVICE') {
+          challenge.aiRecommendedUniversities = mergeUniversityRecommendations(
+            challenge.aiRecommendedUniversities,
+            matchResult.recommendations,
+            challenge.interestedUniversities
+          );
+          await challenge.save();
+        } else {
+          console.warn(
+            `[AI Matching Notice] Strict university matching unavailable during challenge validation: ${matchResult.error || 'AI service returned unavailable'}. Existing recommendations preserved.`
+          );
+        }
       }
     } catch (aiErr) {
       console.warn('[AI Matching Notice] Non-critical matching notice:', aiErr.message);
@@ -1704,12 +1806,27 @@ const recommendUniversitiesForChallenge = async (req, res, next) => {
       });
     }
 
-    const recommendations = await aiService.matchUniversities(challenge, universities);
-    challenge.aiRecommendedUniversities = recommendations.map((rec) => ({
-      ...rec,
-      status: 'PENDING',
-      matchedAt: new Date()
-    }));
+    const matchResult = await aiService.matchUniversitiesStrict(challenge, universities, {
+      excludeEmptyProfiles: true
+    });
+
+    if (!matchResult.success || matchResult.source !== 'AI_SERVICE') {
+      return errorResponse(
+        res,
+        'AI matching service is temporarily unavailable. Please retry in a few moments or proceed with manual assignment.',
+        {
+          source: matchResult.source || 'UNAVAILABLE',
+          details: matchResult.error || 'AI matching service did not respond'
+        },
+        503
+      );
+    }
+
+    challenge.aiRecommendedUniversities = mergeUniversityRecommendations(
+      challenge.aiRecommendedUniversities,
+      matchResult.recommendations,
+      challenge.interestedUniversities
+    );
     await challenge.save();
 
     return successResponse(res, 'AI university recommendations generated successfully', {
@@ -2086,9 +2203,16 @@ const getChallengeRecommendations = async (req, res, next) => {
 
     if (universities && universities.length > 0) {
       try {
-        recommendations = await aiService.matchUniversities(challenge, universities);
+        const matchResult = await aiService.matchUniversitiesStrict(challenge, universities, {
+          excludeEmptyProfiles: true
+        });
+        if (matchResult.success && matchResult.source === 'AI_SERVICE') {
+          recommendations = matchResult.recommendations || [];
+        } else {
+          console.warn('Strict AI matching notice, service unavailable:', matchResult.error);
+        }
       } catch (e) {
-        console.warn('AI matching notice, using heuristics:', e.message);
+        console.warn('AI matching notice:', e.message);
       }
     }
 
@@ -2448,5 +2572,6 @@ module.exports = {
   getAdminProjectById,
   updateProjectStage,
   getAdminUsers,
-  updateUserStatus
+  updateUserStatus,
+  mergeUniversityRecommendations
 };
