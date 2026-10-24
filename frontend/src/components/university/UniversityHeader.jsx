@@ -1,32 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PORTAL_TITLE, GOVT_NAME } from '../../utils/constants';
 import { useAuth } from '../../hooks/useAuth';
 import NotificationDropdown from '../common/NotificationDropdown';
 import Button from '../common/Button';
-import Badge from '../common/Badge';
-import { Bell, LogOut, Menu, X, GraduationCap, Building2 } from 'lucide-react';
+import { LogOut, Menu, GraduationCap } from 'lucide-react';
 
 const UniversityHeader = ({ onToggleSidebar }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchNotifs = async () => {
-    try {
-      const res = await notificationService.getMyNotifications();
-      setNotifications(res.data?.notifications || []);
-      setUnreadCount(res.data?.unreadCount || 0);
-    } catch (err) {
-      console.warn('Notification service unreachable');
-    }
-  };
-
-  useEffect(() => {
-    fetchNotifs();
-  }, []);
 
   const handleLogout = async () => {
     await logout();

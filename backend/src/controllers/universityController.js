@@ -7,6 +7,7 @@ const Team = require('../models/Team');
 const Faculty = require('../models/Faculty');
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
+const { dispatchNotification } = require('../services/notificationDispatcher');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 const { validateTransition } = require('../utils/validationWorkflow');
 
@@ -461,14 +462,23 @@ const expressInterest = async (req, res, next) => {
         }
       }
 
-      // Create Notification for Citizen Submitter
-      await Notification.create({
-        recipient: updatedChallenge.submittedBy,
-        title: 'University Expressed Interest',
-        message: `${uniName} has expressed research interest in your challenge [${updatedChallenge.code}] "${updatedChallenge.title}".`,
-        type: 'GENERAL',
-        challenge: id
-      });
+      // Dispatch Notification to Citizen Submitter (non-blocking)
+      try {
+        if (updatedChallenge.submittedBy) {
+          await dispatchNotification({
+            recipient: updatedChallenge.submittedBy,
+            sender: req.user.id,
+            senderName: uniName,
+            title: 'University Expressed Interest',
+            message: `${uniName} has expressed research interest in your challenge [${updatedChallenge.code}] "${updatedChallenge.title}".`,
+            type: 'UNIVERSITY_INTEREST',
+            relatedEntity: 'Challenge',
+            relatedEntityId: id
+          });
+        }
+      } catch (notifErr) {
+        console.warn('[Notification Warning] Failed to dispatch interest notification:', notifErr.message);
+      }
 
       return successResponse(res, `Expression of interest registered for ${uniName}`, {
         challenge: updatedChallenge,
@@ -608,14 +618,23 @@ const acceptChallenge = async (req, res, next) => {
         }
       });
 
-      // 2. Create Citizen Notification
-      await Notification.create({
-        recipient: updatedChallenge.submittedBy,
-        title: 'Challenge Adopted by University Research Lab',
-        message: `Your challenge [${updatedChallenge.code}] has been adopted by ${uniName} for solution engineering and student cohort prototyping.`,
-        type: 'ASSIGNED',
-        challenge: id
-      });
+      // 2. Dispatch Citizen Notification (non-blocking)
+      try {
+        if (updatedChallenge.submittedBy) {
+          await dispatchNotification({
+            recipient: updatedChallenge.submittedBy,
+            sender: req.user.id,
+            senderName: uniName,
+            title: 'Challenge Adopted by University Research Lab',
+            message: `Your challenge [${updatedChallenge.code}] has been adopted by ${uniName} for solution engineering and student cohort prototyping.`,
+            type: 'ASSIGNED',
+            relatedEntity: 'Challenge',
+            relatedEntityId: id
+          });
+        }
+      } catch (notifErr) {
+        console.warn('[Notification Warning] Failed to dispatch challenge adoption notification:', notifErr.message);
+      }
 
       const populated = await Challenge.findById(id)
         .populate('submittedBy', 'name organization district')

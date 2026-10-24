@@ -18,7 +18,10 @@ import {
   BookOpen,
   Bell,
   RefreshCw,
-  Plus
+  Plus,
+  Check,
+  CheckCheck,
+  Clock
 } from 'lucide-react';
 
 /**
@@ -262,8 +265,12 @@ export const UniversityResearchPage = () => {
           Academic IP, patent filings, and peer-reviewed journals resulting from Delhi problem solving.
         </p>
       </div>
-      <Card accent="none" className="p-6 text-xs text-gov-text-secondary">
-        <p>Municipal patent filings, hardware schematics, and open data archives.</p>
+      <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-2">
+        <BookOpen className="w-8 h-8 mx-auto text-gov-navy/40" />
+        <p className="font-bold text-gov-navy text-sm">No Published Papers or Patents Recorded</p>
+        <p className="max-w-md mx-auto text-[11px] text-gov-text-secondary">
+          Academic IP disclosures, peer-reviewed publications, and patent filings originating from active or completed municipal innovation projects will appear here once officially submitted.
+        </p>
       </Card>
     </div>
   );
@@ -274,15 +281,21 @@ export const UniversityResearchPage = () => {
  */
 export const UniversityNotificationsPage = () => {
   const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [activeTab, setActiveTab] = useState('unread'); // 'unread' | 'all'
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const fetchNotifs = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
-      const res = await notificationService.getMyNotifications();
+      const res = await notificationService.getMyNotifications(activeTab);
       setNotifications(res.data?.notifications || []);
+      setUnreadCount(res.data?.unreadCount || 0);
     } catch (err) {
       console.error(err);
+      setErrorMsg('Failed to load institutional notifications. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -290,38 +303,183 @@ export const UniversityNotificationsPage = () => {
 
   useEffect(() => {
     fetchNotifs();
-  }, []);
+  }, [activeTab]);
+
+  const handleMarkAsRead = async (id) => {
+    try {
+      await notificationService.markAsRead(id);
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, isRead: true, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.warn('Failed to mark notification as read:', err.message);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, isRead: true, read: true }))
+      );
+      setUnreadCount(0);
+    } catch (err) {
+      console.warn('Failed to mark all as read:', err.message);
+    }
+  };
+
+  const filteredNotifications = notifications.filter((n) => {
+    if (activeTab === 'unread') return !n.isRead && !n.read;
+    return true;
+  });
 
   return (
     <div className="space-y-6 font-serif">
-      <div>
-        <h1 className="text-2xl font-bold text-gov-navy">Institutional Notifications & Alerts</h1>
-        <p className="text-xs text-gov-text-secondary mt-0.5">
-          Official communications from GNCTD, student team submissions, and grant disbursements.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gov-navy">Institutional Notifications & Alerts</h1>
+          <p className="text-xs text-gov-text-secondary mt-0.5">
+            Official communications from GNCTD, student team submissions, and project milestone updates.
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button variant="subtle" size="sm" onClick={fetchNotifs} icon={RefreshCw}>
+            Refresh
+          </Button>
+          {unreadCount > 0 && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleMarkAllAsRead}
+              icon={CheckCheck}
+              className="bg-gov-maroon text-white"
+            >
+              Mark All as Read ({unreadCount})
+            </Button>
+          )}
+        </div>
       </div>
 
-      <Card accent="none">
-        {loading ? (
-          <div className="py-8 text-center text-xs text-gov-text-muted">Loading notices...</div>
-        ) : notifications.length === 0 ? (
-          <div className="py-8 text-center text-xs text-gov-text-muted">No academic notifications found.</div>
-        ) : (
-          <div className="divide-y divide-gov-border text-xs">
-            {notifications.map((n) => (
-              <div key={n._id} className="py-3.5 space-y-1">
-                <div className="flex items-center justify-between text-[11px] font-bold text-gov-navy">
-                  <span>{n.title}</span>
-                  <span className="text-gray-400 font-normal">
-                    {new Date(n.createdAt).toLocaleDateString('en-IN')}
-                  </span>
+      {/* Filter Tabs */}
+      <div className="flex border-b border-gov-border text-xs font-semibold bg-white rounded-t-sm">
+        <button
+          onClick={() => setActiveTab('unread')}
+          className={`px-4 py-2.5 transition-colors border-b-2 flex items-center space-x-1.5 ${
+            activeTab === 'unread'
+              ? 'border-gov-maroon text-gov-maroon font-bold'
+              : 'border-transparent text-gray-500 hover:text-gov-navy'
+          }`}
+        >
+          <span>Unread Notices</span>
+          {unreadCount > 0 && (
+            <Badge variant="maroon" className="text-[10px] px-1.5 py-0">
+              {unreadCount}
+            </Badge>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2.5 transition-colors border-b-2 ${
+            activeTab === 'all'
+              ? 'border-gov-maroon text-gov-maroon font-bold'
+              : 'border-transparent text-gray-500 hover:text-gov-navy'
+          }`}
+        >
+          All Notifications
+        </button>
+      </div>
+
+      {/* Content Area */}
+      {loading ? (
+        <LoadingState message="Loading institutional notifications..." />
+      ) : errorMsg ? (
+        <Card accent="none" className="py-8 text-center text-xs text-rose-700 space-y-2">
+          <p className="font-semibold">{errorMsg}</p>
+          <Button variant="outline" size="sm" onClick={fetchNotifs} icon={RefreshCw}>
+            Retry
+          </Button>
+        </Card>
+      ) : filteredNotifications.length === 0 ? (
+        <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-2">
+          <Bell className="w-8 h-8 mx-auto text-gray-300 stroke-1" />
+          <p className="font-bold text-gov-navy text-sm">
+            No {activeTab === 'unread' ? 'Unread ' : ''}Notifications
+          </p>
+          <p className="max-w-md mx-auto text-[11px] text-gov-text-secondary">
+            Official GNCTD directives, challenge assignments, and student team project alerts will appear here.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filteredNotifications.map((n) => {
+            const isUnread = !n.isRead && !n.read;
+            return (
+              <Card
+                key={n._id}
+                accent="none"
+                className={`p-4 transition-colors ${
+                  isUnread
+                    ? 'bg-amber-50/40 border-l-4 border-l-gov-maroon'
+                    : 'bg-white hover:bg-gov-sand-50/50'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <span className="font-bold text-gov-navy text-sm">
+                        {n.title || 'Not provided'}
+                      </span>
+                      {isUnread && (
+                        <Badge variant="maroon" className="text-[10px]">
+                          Unread
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-gov-text-secondary leading-relaxed text-xs">
+                      {n.message || 'Not provided'}
+                    </p>
+                    <div className="flex items-center space-x-3 text-[11px] text-gov-text-muted pt-1">
+                      <span className="flex items-center space-x-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        <span>
+                          {n.createdAt
+                            ? new Date(n.createdAt).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : 'Not provided'}
+                        </span>
+                      </span>
+                      {n.senderName && (
+                        <span>&bull; Sender: <strong>{n.senderName}</strong></span>
+                      )}
+                      {n.relatedEntity && (
+                        <span>&bull; Entity: <em>{n.relatedEntity}</em></span>
+                      )}
+                    </div>
+                  </div>
+
+                  {isUnread && (
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      onClick={() => handleMarkAsRead(n._id)}
+                      icon={Check}
+                      className="text-xs self-start"
+                    >
+                      Mark as read
+                    </Button>
+                  )}
                 </div>
-                <p className="text-gov-text-secondary leading-snug">{n.message}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
