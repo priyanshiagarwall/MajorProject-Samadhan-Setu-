@@ -94,20 +94,6 @@ export const ROLES = [
     actionLabel: "Access University Portal"
   },
   {
-    id: "faculty",
-    key: "mentor",
-    title: "Faculty Mentor",
-    badgeText: "Academic Supervisor",
-    description: "Supervise student cohorts, validate research milestones, and certify societal innovation credits.",
-    path: "/faculty",
-    loginPath: "/login?role=faculty",
-    registerPath: "/register?role=faculty",
-    iconName: "BookOpen",
-    colorVariant: "maroon",
-    accentColor: "#7a1113",
-    actionLabel: "Access Faculty Hub"
-  },
-  {
     id: "student",
     key: "solution-provider",
     title: "Student Innovator",
@@ -159,6 +145,7 @@ export const NAV_LINKS = [
   { label: "Citizen Portal", path: "/client" },
   { label: "State Administration", path: "/admin" },
   { label: "University Hub", path: "/university" },
+  { label: "Student Hub", path: "/student" },
   { label: "Industry Network", path: "/industry" }
 ];
 

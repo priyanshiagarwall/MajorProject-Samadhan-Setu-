@@ -108,10 +108,15 @@ const RoleSelectionPage = () => {
           </div>
         )}
 
-        {/* 5 Main Role Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-14">
+        {/* 5 Dedicated Stakeholder Portals */}
+        <div className="flex flex-wrap justify-center gap-6 mb-14">
           {ROLES.map((role) => (
-            <RoleCard key={role.id} role={role} />
+            <div
+              key={role.id}
+              className="w-full md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] max-w-md lg:max-w-none flex"
+            >
+              <RoleCard role={role} />
+            </div>
           ))}
         </div>
 

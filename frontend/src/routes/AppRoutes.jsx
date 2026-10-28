@@ -61,7 +61,6 @@ import {
 } from '../pages/university/UniversityPlaceholders';
 
 // Other Stakeholder Pages
-import FacultyDashboardPage from '../pages/FacultyDashboardPage';
 import StudentDashboardPage from '../pages/StudentDashboardPage';
 import StudentChallengesPage from '../pages/student/StudentChallengesPage';
 import StudentChallengeDetailPage from '../pages/student/StudentChallengeDetailPage';
@@ -69,7 +68,6 @@ import StudentProjectsPage from '../pages/student/StudentProjectsPage';
 import StudentMilestonesPage from '../pages/student/StudentMilestonesPage';
 import StudentDocumentsPage from '../pages/student/StudentDocumentsPage';
 import StudentIndustryPage from '../pages/student/StudentIndustryPage';
-import StudentNotificationsPage from '../pages/student/StudentNotificationsPage';
 import StudentProfilePage from '../pages/student/StudentProfilePage';
 import StudentAchievementsPage from '../pages/student/StudentAchievementsPage';
 
@@ -180,23 +178,8 @@ const AppRoutes = () => {
         <Route path="profile" element={<UniversityProfilePage />} />
       </Route>
 
-      {/* 4. Faculty Route */}
-      <Route
-        path="/faculty"
-        element={
-          <ProtectedRoute>
-            <RoleRoute allowedRoles={['FACULTY']}>
-              <DashboardLayout
-                roleId="faculty"
-                roleTitle="Faculty Mentor"
-                roleBadge="Academic Supervisor"
-              />
-            </RoleRoute>
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<FacultyDashboardPage />} />
-      </Route>
+      {/* Faculty Portal Route Redirect */}
+      <Route path="/faculty" element={<Navigate to="/select-role" replace />} />
 
       {/* 5. Student Route */}
       <Route
@@ -216,7 +199,7 @@ const AppRoutes = () => {
         <Route path="milestones" element={<StudentMilestonesPage />} />
         <Route path="documents" element={<StudentDocumentsPage />} />
         <Route path="industry" element={<StudentIndustryPage />} />
-        <Route path="notifications" element={<StudentNotificationsPage />} />
+        <Route path="notifications" element={<Navigate to="/student" replace />} />
         <Route path="profile" element={<StudentProfilePage />} />
         <Route path="achievements" element={<StudentAchievementsPage />} />
       </Route>

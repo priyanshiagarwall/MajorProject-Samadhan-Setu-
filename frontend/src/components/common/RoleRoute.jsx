@@ -11,7 +11,6 @@ const roleDashboardMap = {
   ADMIN: '/admin',
   UNIVERSITY: '/university',
   INDUSTRY: '/industry',
-  FACULTY: '/faculty',
   STUDENT: '/student'
 };
 

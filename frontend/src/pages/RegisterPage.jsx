@@ -203,9 +203,8 @@ const RegisterPage = () => {
       errors.confirmPassword = 'Passwords do not match.';
     }
 
-    // Role-specific validation
-    if (['UNIVERSITY', 'FACULTY', 'STUDENT', 'INDUSTRY'].includes(selectedRole.roleKey) && !organization.trim()) {
-      errors.organization = `Organization / Institution name is required for ${selectedRole.label} registration.`;
+    if (['UNIVERSITY', 'FACULTY', 'STUDENT', 'INDUSTRY'].includes(role) && !organization.trim()) {
+      errors.organization = `Organization / Institution is required for ${role} registration.`;
     }
 
     if (!terms) {
@@ -259,7 +258,6 @@ const RegisterPage = () => {
         ADMIN: '/admin',
         UNIVERSITY: '/university',
         INDUSTRY: '/industry',
-        FACULTY: '/faculty',
         STUDENT: '/student'
       };
 

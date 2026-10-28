@@ -289,49 +289,23 @@ const LoginPage = () => {
 
       {/* 1-Click Quick Demo Sign In Bar */}
       <div className="bg-white border border-gov-border rounded-sm p-4 shadow-gov-card">
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center space-x-2 text-xs font-serif text-gov-navy font-bold">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>1-Click Test Login for {currentPortal.badgeText}:</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleQuickLogin(currentPortal.demo)}
-            className="text-xs font-serif font-bold text-white bg-gov-maroon hover:bg-gov-maroon-dark px-3 py-1 rounded-sm shadow-xs cursor-pointer flex items-center"
-          >
-            Instant Demo Sign In &rarr;
-          </button>
+        <div className="flex items-center space-x-2 text-xs font-serif text-gov-navy font-bold mb-2.5">
+          <Sparkles className="w-4 h-4 text-amber-600" />
+          <span>1-Click Stakeholder Demo Access:</span>
+          <span className="text-[11px] text-gov-text-muted font-normal">(Instant test login across all 6 roles)</span>
         </div>
-        <p className="text-[11px] font-serif text-gov-text-secondary">
-          Clicking "Instant Demo Sign In" will authenticate as verified demo user{' '}
-          <strong className="text-gov-navy">{currentPortal.demo.label}</strong> ({currentPortal.demo.email}) and launch the portal immediately.
-        </p>
-
-        {/* Mini tabs for other roles */}
-        <div className="mt-3 pt-3 border-t border-gov-border/60">
-          <div className="text-[10px] font-serif uppercase tracking-wider text-gov-text-muted mb-1.5">
-            Or test another stakeholder identity in 1 click:
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
-            {Object.values(portalDetails).map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  handleSelectPortal(p.id);
-                  handleQuickLogin(p.demo);
-                }}
-                className={`p-1.5 text-left rounded-sm border text-[10px] font-serif cursor-pointer transition-all ${
-                  p.id === currentPortal.id
-                    ? 'border-gov-maroon bg-gov-sand-50 font-bold'
-                    : 'border-gov-border hover:border-gov-maroon bg-white'
-                }`}
-              >
-                <div className="truncate text-gov-navy font-semibold">{p.demo.label.split(' ')[0]}</div>
-                <div className="text-[9px] text-gov-maroon truncate">{p.roleKey}</div>
-              </button>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+          {demoAccounts.map((acc) => (
+            <button
+              key={acc.role}
+              type="button"
+              onClick={() => handleQuickLogin(acc)}
+              className="p-2 text-left rounded-sm border border-gov-border hover:border-gov-maroon bg-white hover:bg-gov-sand-50 transition-all text-xs font-serif cursor-pointer shadow-xs"
+            >
+              <div className="font-semibold text-gov-navy truncate">{acc.label}</div>
+              <div className="text-[10px] text-gov-maroon font-medium truncate">{acc.role}</div>
+            </button>
+          ))}
         </div>
       </div>
 

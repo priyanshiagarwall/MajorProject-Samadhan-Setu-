@@ -12,7 +12,6 @@ const roleDashboardMap = {
   ADMIN: '/admin',
   UNIVERSITY: '/university',
   INDUSTRY: '/industry',
-  FACULTY: '/faculty',
   STUDENT: '/student'
 };
 
@@ -58,12 +57,12 @@ const Navbar = () => {
         />
 
         {/* Desktop Navigation */}
-        <nav className="hidden lg:flex items-center space-x-6">
+        <nav className="hidden lg:flex items-center space-x-4 xl:space-x-6">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.path}
               to={link.path}
-              className={`text-sm font-serif font-medium transition-colors hover:text-gov-maroon ${
+              className={`text-xs xl:text-sm font-serif font-medium whitespace-nowrap transition-colors hover:text-gov-maroon ${
                 location.pathname === link.path
                   ? 'text-gov-maroon border-b-2 border-gov-maroon pb-0.5'
                   : 'text-gov-text-secondary'

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import notificationService from '../services/notificationService';
 import socketService from '../services/socket';
 import Badge from '../components/common/Badge';
 import SamadhanSetuLogo from '../components/common/SamadhanSetuLogo';
@@ -15,7 +14,6 @@ import {
   FileText,
   FlaskConical,
   Building2,
-  Bell,
   Award,
   User,
   Settings,
@@ -36,7 +34,6 @@ const SIDEBAR_ITEMS = [
   { id: 'documents', label: 'Documents', icon: FileText, path: '/student/documents' },
   { id: 'prototype', label: 'Prototype & Testing', icon: FlaskConical, path: '/student/prototype' },
   { id: 'industry', label: 'Industry Collaboration', icon: Building2, path: '/student/industry' },
-  { id: 'notifications', label: 'Notifications', icon: Bell, path: '/student/notifications' },
   { id: 'achievements', label: 'Innovation & Achievements', icon: Award, path: '/student/achievements' },
   { id: 'profile', label: 'Profile', icon: User, path: '/student/profile' }
 ];
@@ -51,39 +48,11 @@ const StudentLayout = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchUnreadCount = async () => {
-    try {
-      const res = await notificationService.getMyNotifications('unread');
-      if (typeof res?.data?.unreadCount === 'number') {
-        setUnreadCount(res.data.unreadCount);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch unread notification count:', err.message);
-    }
-  };
 
   useEffect(() => {
     if (!user) return;
     const userId = user._id || user.id;
     socketService.connect(userId);
-    fetchUnreadCount();
-
-    const unsubCount = socketService.onUnreadCount(({ unreadCount: count }) => {
-      if (typeof count === 'number') {
-        setUnreadCount(count);
-      }
-    });
-
-    const unsubNotif = socketService.onNotification(() => {
-      fetchUnreadCount();
-    });
-
-    return () => {
-      if (typeof unsubCount === 'function') unsubCount();
-      if (typeof unsubNotif === 'function') unsubNotif();
-    };
   }, [user]);
 
   const handleLogout = async () => {
@@ -123,19 +92,8 @@ const StudentLayout = () => {
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
                   {!isCollapsed && (
-                    <span className="flex-1 flex items-center justify-between">
-                      <span>{item.label}</span>
-                      {item.id === 'notifications' && unreadCount > 0 && (
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                            active
-                              ? 'bg-white text-gov-maroon'
-                              : 'bg-gov-maroon text-white'
-                          }`}
-                        >
-                          {unreadCount > 99 ? '99+' : unreadCount}
-                        </span>
-                      )}
+                    <span className="flex-1">
+                      {item.label}
                     </span>
                   )}
                 </Link>
@@ -232,28 +190,10 @@ const StudentLayout = () => {
                 </nav>
               </div>
 
-              {/* Right: Notifications + Profile */}
+              {/* Right: Profile */}
               <div className="flex items-center space-x-4">
-                {/* Notifications Bell */}
-                <Link
-                  to="/student/notifications"
-                  className="relative p-2 text-gov-navy hover:bg-gov-sand-100 rounded-sm"
-                  title={
-                    unreadCount > 0
-                      ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
-                      : 'Notifications'
-                  }
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-gov-maroon text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  )}
-                </Link>
-
                 {/* Profile */}
-                <div className="flex items-center space-x-3 pl-4 border-l border-gov-border">
+                <div className="flex items-center space-x-3">
                   <div className="hidden sm:block text-right">
                     <div className="text-xs font-serif font-bold text-gov-navy">
                       {user?.name || 'Student'}

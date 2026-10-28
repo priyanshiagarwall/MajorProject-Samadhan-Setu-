@@ -12,7 +12,7 @@ const iconMap = {
   Building2
 };
 
-const RoleCard = ({ role }) => {
+const RoleCard = ({ role, className = '' }) => {
   const navigate = useNavigate();
   const IconComponent = iconMap[role.iconName] || Users;
 
@@ -26,7 +26,7 @@ const RoleCard = ({ role }) => {
   };
 
   return (
-    <div className="gov-card flex flex-col justify-between p-6 bg-white border border-gov-border rounded-sm hover:border-gov-maroon hover:shadow-gov-hover transition-all duration-200 group relative">
+    <div className={`gov-card flex flex-col justify-between p-6 bg-white border border-gov-border rounded-sm hover:border-gov-maroon hover:shadow-gov-hover transition-all duration-200 group relative w-full h-full ${className}`}>
       {/* Top indicator strip for subtle accent */}
       <div
         className="absolute top-0 left-0 right-0 h-1 rounded-t-sm transition-colors duration-200 group-hover:h-1.5"
