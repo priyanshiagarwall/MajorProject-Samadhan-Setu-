@@ -4,6 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   GraduationCap,
   Plus,
@@ -30,18 +31,24 @@ const UniversityFacultyPage = () => {
   const [experience, setExperience] = useState('8 Years');
   const [expertiseTags, setExpertiseTags] = useState('');
 
+  // Delete Faculty Confirmation Modal
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const fetchFaculty = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const res = await projectService.getFaculty();
       setFaculty(res.data?.faculty || []);
     } catch (err) {
       console.error(err);
-      setErrorMsg('Failed to load faculty mentor directory');
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to load faculty mentor directory');
     } finally {
       setLoading(false);
     }
@@ -78,22 +85,31 @@ const UniversityFacultyPage = () => {
       fetchFaculty();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to add faculty mentor');
+      setErrorMsg(err.response?.data?.message || err.message || 'Failed to add faculty mentor');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleRemoveFaculty = async (id, facName) => {
-    if (!window.confirm(`Are you sure you want to remove ${facName} from active mentoring?`)) return;
+  const handleOpenRemoveModal = (id, facName) => {
+    setDeleteError('');
+    setConfirmDelete({ id, name: facName });
+  };
 
+  const handleConfirmRemove = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    setDeleteError('');
     try {
-      await projectService.removeFaculty(id);
-      setActionSuccess(`Faculty mentor ${facName} removed from active roster.`);
+      await projectService.removeFaculty(confirmDelete.id);
+      setActionSuccess(`Faculty mentor ${confirmDelete.name || ''} removed from active roster.`);
+      setConfirmDelete(null);
       fetchFaculty();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
-      alert(err.message || 'Failed to remove faculty');
+      setDeleteError(err.response?.data?.message || err.message || 'Failed to remove faculty mentor');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -137,7 +153,7 @@ const UniversityFacultyPage = () => {
         </div>
       )}
 
-      {errorMsg && (
+      {errorMsg && faculty.length > 0 && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xs">
           {errorMsg}
         </div>
@@ -145,6 +161,12 @@ const UniversityFacultyPage = () => {
 
       {loading ? (
         <LoadingState message="Loading accredited faculty mentors & supervisory research areas..." />
+      ) : errorMsg && faculty.length === 0 ? (
+        <ErrorState
+          title="Unable to Load Faculty Directory"
+          message={errorMsg}
+          onRetry={fetchFaculty}
+        />
       ) : faculty.length === 0 ? (
         <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-3">
           <p className="font-bold text-gov-navy text-sm">No Faculty Mentors Registered</p>
@@ -163,15 +185,15 @@ const UniversityFacultyPage = () => {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-bold text-gov-navy text-sm leading-snug">
-                      {f.name}
+                      {f.name || 'Not provided'}
                     </h3>
                     <div className="text-[11px] text-gov-maroon font-semibold">
-                      {f.department}
+                      {f.department || 'Not provided'}
                     </div>
                   </div>
                   <button
-                    onClick={() => handleRemoveFaculty(f._id, f.name)}
-                    className="text-gray-300 hover:text-red-600 p-1"
+                    onClick={() => handleOpenRemoveModal(f._id, f.name)}
+                    className="text-gray-300 hover:text-red-600 p-1 transition-colors"
                     title="Remove Faculty Mentor"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -183,13 +205,13 @@ const UniversityFacultyPage = () => {
                     <span className="text-[10px] text-gov-text-muted uppercase font-bold block">
                       Core Specialization
                     </span>
-                    <span className="text-gov-navy font-semibold text-[11px]">{f.specialization}</span>
+                    <span className="text-gov-navy font-semibold text-[11px]">{f.specialization || 'Not provided'}</span>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-gray-500 pt-1 border-t border-gov-border">
-                    <span>Experience: <strong>{f.experience}</strong></span>
+                    <span>Experience: <strong>{f.experience || 'Not provided'}</strong></span>
                     <span className="flex items-center">
                       <Mail className="w-3 h-3 mr-1" />
-                      {f.email}
+                      {f.email || 'Not provided'}
                     </span>
                   </div>
                 </div>
@@ -210,9 +232,30 @@ const UniversityFacultyPage = () => {
               </div>
 
               {/* Assigned Projects */}
-              <div className="pt-2 border-t border-gov-border text-[11px] text-gov-text-secondary">
-                <span className="font-bold text-gov-navy">Assigned Projects: </span>
-                <span>{f.assignedProjects?.length || 0} cohort(s)</span>
+              <div className="pt-2 border-t border-gov-border text-[11px] text-gov-text-secondary space-y-1">
+                <span className="font-bold text-gov-navy block">
+                  Assigned Projects ({f.assignedProjects?.length || 0}):
+                </span>
+                {f.assignedProjects && f.assignedProjects.length > 0 ? (
+                  <ul className="space-y-0.5">
+                    {f.assignedProjects.map((p) => {
+                      const pTitle = typeof p === 'object' && p.title ? p.title : (typeof p === 'string' ? p : 'Not provided');
+                      const pKey = typeof p === 'object' && p._id ? p._id : p;
+                      return (
+                        <li
+                          key={pKey}
+                          className="text-[10px] text-gov-text-secondary flex items-center space-x-1.5 truncate"
+                          title={pTitle}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-gov-maroon flex-shrink-0" />
+                          <span className="truncate">{pTitle}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <span className="text-[10px] text-gov-text-muted italic">None assigned</span>
+                )}
               </div>
             </Card>
           ))}
@@ -330,6 +373,56 @@ const UniversityFacultyPage = () => {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Faculty Removal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-gov-border rounded-sm max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gov-border pb-3">
+              <h3 className="font-bold text-gov-navy text-base flex items-center space-x-2">
+                <Trash2 className="w-4 h-4 text-gov-maroon" />
+                <span>Confirm Faculty Removal</span>
+              </h3>
+              <button
+                onClick={() => { if (!deleting) setConfirmDelete(null); }}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gov-text-secondary leading-relaxed">
+              Are you sure you want to remove <strong>{confirmDelete.name || 'this faculty mentor'}</strong> from the active mentoring roster? This will automatically unassign them from any currently supervised projects and teams.
+            </p>
+
+            {deleteError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xs">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-gov-border flex items-center justify-end space-x-2 text-xs">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmRemove}
+                disabled={deleting}
+                className="bg-gov-maroon text-white hover:bg-gov-maroon-dark"
+              >
+                {deleting ? 'Removing...' : 'Confirm Removal'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

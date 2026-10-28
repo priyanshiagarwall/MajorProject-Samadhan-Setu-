@@ -7,6 +7,8 @@ const Team = require('../models/Team');
 const mongoose = require('mongoose');
 const aiService = require('../services/aiService');
 const { dispatchNotification } = require('../services/notificationDispatcher');
+const AuditLog = require('../models/AuditLog');
+const { validateTransition } = require('../utils/validationWorkflow');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 
 /**
@@ -191,6 +193,7 @@ const getChallenges = async (req, res, next) => {
     if (assignedUniversity) query.assignedUniversity = assignedUniversity;
 
     const challenges = await Challenge.find(query)
+      .select('-aiDuplicates')
       .populate('submittedBy', 'name district organization')
       .populate('assignedUniversity', 'name email organization')
       .populate('assignedStudents', 'name email organization')
@@ -213,6 +216,7 @@ const getChallenges = async (req, res, next) => {
 const getChallengeById = async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id)
+      .select('-aiDuplicates')
       .populate('submittedBy', 'name district organization')
       .populate('assignedUniversity', 'name email organization')
       .populate('assignedStudents', 'name email organization')
@@ -287,19 +291,49 @@ const assignCohort = async (req, res, next) => {
       return errorResponse(res, 'Challenge not found', null, 404);
     }
 
+    // University ownership check applies strictly to UNIVERSITY role
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && challenge.assignedUniversity?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: This challenge is not assigned to your university', null, 403);
+    }
+
+    const previousStatus = challenge.status;
+    try {
+      validateTransition(previousStatus, 'IN_PROGRESS');
+    } catch (transErr) {
+      return errorResponse(res, transErr.message, null, 400);
+    }
+
     if (facultyLead) challenge.facultyLead = facultyLead;
     if (studentIds && Array.isArray(studentIds)) {
       challenge.assignedStudents = studentIds;
     }
     if (solutionNotes) challenge.solutionNotes = solutionNotes;
-    challenge.status = 'in_progress';
+    challenge.status = 'IN_PROGRESS';
 
     if (challenge.milestones.length > 1) {
       challenge.milestones[0].completed = true;
       challenge.milestones[1].completed = true;
     }
 
+    challenge.timeline.push({
+      status: 'IN_PROGRESS',
+      label: 'Cohort Assigned & Prototyping Active',
+      comment: solutionNotes || 'Student cohort and faculty lead designated by university research lab.',
+      date: new Date()
+    });
+
     await challenge.save();
+
+    await AuditLog.create({
+      challenge: challenge._id,
+      user: req.user.id,
+      userName: req.user.name || 'Authorized Lead',
+      userRole: req.user.role || 'UNIVERSITY',
+      action: 'ASSIGN_COHORT',
+      previousStatus,
+      newStatus: 'IN_PROGRESS',
+      comment: solutionNotes || 'Student cohort and faculty lead designated.'
+    });
 
     const updated = await Challenge.findById(challenge._id)
       .populate('submittedBy', 'name email organization')
@@ -673,7 +707,7 @@ const expressInterest = async (req, res, next) => {
             relatedEntityId: challenge._id
           });
         }
-      } catch (adminNotifErr) {}
+      } catch (adminNotifErr) { }
     }
 
     return successResponse(

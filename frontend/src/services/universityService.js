@@ -24,5 +24,11 @@ export const universityService = {
   acceptChallenge: async (challengeId, facultyData) => {
     const response = await api.post(`/universities/challenges/${challengeId}/accept`, facultyData);
     return response.data;
+  },
+
+  declineChallenge: async (challengeId) => {
+    const response = await api.post(`/universities/challenges/${challengeId}/decline`);
+    return response.data;
   }
 };
+

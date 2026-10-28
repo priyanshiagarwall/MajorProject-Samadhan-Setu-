@@ -345,6 +345,21 @@ const createProject = async (req, res, next) => {
       return errorResponse(res, 'University ID is required', null, 400);
     }
 
+    // University ownership check applies strictly to UNIVERSITY role
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && challenge.assignedUniversity?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: This challenge is not assigned to your university', null, 403);
+    }
+
+    const validChallengeStatuses = ['ASSIGNED', 'IN_PROGRESS'];
+    if (!validChallengeStatuses.includes((challenge.status || '').toUpperCase())) {
+      return errorResponse(
+        res,
+        `Cannot create project: Challenge is in '${challenge.status}' status (must be ASSIGNED or IN_PROGRESS)`,
+        null,
+        400
+      );
+    }
+
     const defaultMilestones = [
       {
         title: 'Municipal Baseline Survey & Technical Feasibility',
@@ -1448,10 +1463,32 @@ const assignMentor = async (req, res, next) => {
       return errorResponse(res, 'Unauthorized: Only the assigned university or administrator can assign faculty mentors', null, 403);
     }
 
+    if (req.user.role === 'UNIVERSITY') {
+      const pUniId = (project.universityId?._id || project.universityId)?.toString();
+      const fUniId = (faculty.university?._id || faculty.university)?.toString();
+      if (!pUniId || !fUniId || pUniId !== fUniId) {
+        return errorResponse(res, 'Unauthorized: Faculty mentor belongs to another university', null, 400);
+      }
+      if (!faculty.isActive) {
+        return errorResponse(res, 'Cannot assign an inactive faculty mentor', null, 400);
+      }
+    }
+
+    if (project.mentor && project.mentor.toString() !== facultyId.toString()) {
+      await Faculty.findByIdAndUpdate(project.mentor, {
+        $pull: { assignedProjects: project._id }
+      });
+    }
+
     project.mentor = facultyId;
     await project.save();
 
     await faculty.updateOne({ $addToSet: { assignedProjects: project._id } });
+
+    if (project.team) {
+      await Team.findByIdAndUpdate(project.team, { facultyMentor: facultyId });
+    }
+    await Team.updateMany({ project: project._id }, { facultyMentor: facultyId });
 
     return successResponse(res, 'Faculty mentor assigned to project', { project });
   } catch (error) {
@@ -2176,6 +2213,11 @@ const updatePartnershipStatus = async (req, res, next) => {
     const project = await Project.findById(id);
     if (!project) {
       return errorResponse(res, 'Project not found', null, 404);
+    }
+
+    // University ownership check applies strictly to role UNIVERSITY
+    if ((req.user?.role || '').toUpperCase() === 'UNIVERSITY' && project.universityId?.toString() !== req.user.id.toString()) {
+      return errorResponse(res, 'Unauthorized: You can only evaluate partnerships for your university projects', null, 403);
     }
 
     const partnership = await Partnership.findOne({ _id: partnershipId, project: id })

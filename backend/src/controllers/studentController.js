@@ -134,7 +134,14 @@ const removeStudent = async (req, res, next) => {
     }
 
     student.isActive = false;
+    student.assignedTeam = undefined;
     await student.save();
+
+    // Pull student from any team membership
+    await Team.updateMany(
+      { 'members.student': id },
+      { $pull: { members: { student: id } } }
+    );
 
     return successResponse(res, 'Student profile removed successfully');
   } catch (error) {

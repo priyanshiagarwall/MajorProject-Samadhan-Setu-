@@ -1,32 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PORTAL_TITLE, GOVT_NAME } from '../../utils/constants';
 import { useAuth } from '../../hooks/useAuth';
 import NotificationDropdown from '../common/NotificationDropdown';
 import Button from '../common/Button';
-import Badge from '../common/Badge';
-import { Bell, LogOut, Menu, X, GraduationCap, Building2 } from 'lucide-react';
+import { LogOut, Menu, GraduationCap } from 'lucide-react';
 
 const UniversityHeader = ({ onToggleSidebar }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchNotifs = async () => {
-    try {
-      const res = await notificationService.getMyNotifications();
-      setNotifications(res.data?.notifications || []);
-      setUnreadCount(res.data?.unreadCount || 0);
-    } catch (err) {
-      console.warn('Notification service unreachable');
-    }
-  };
-
-  useEffect(() => {
-    fetchNotifs();
-  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -87,11 +69,18 @@ const UniversityHeader = ({ onToggleSidebar }) => {
             className="flex items-center space-x-2 p-1.5 rounded-sm hover:bg-gov-sand-50 transition-colors border border-transparent hover:border-gov-border"
           >
             <div className="w-7 h-7 rounded-sm bg-gov-navy text-white flex items-center justify-center font-bold text-xs border border-gov-border">
-              DTU
+              {user?.name
+                ? user.name
+                    .split(/\s+/)
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 3)
+                    .toUpperCase()
+                : 'U'}
             </div>
             <div className="hidden sm:block text-left">
               <div className="text-xs font-bold text-gov-navy leading-tight truncate max-w-[160px]">
-                {user?.name || 'Delhi Technological University'}
+                {user?.name || 'Higher Education Institution'}
               </div>
               <div className="text-[10px] text-gov-maroon font-semibold">
                 ACADEMIC PARTNER

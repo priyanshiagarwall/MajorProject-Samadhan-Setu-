@@ -5,7 +5,8 @@ const {
   updateProfile,
   getChallenges,
   expressInterest,
-  acceptChallenge
+  acceptChallenge,
+  declineChallenge
 } = require('../controllers/universityController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -21,5 +22,7 @@ router.put('/profile', updateProfile);
 router.get('/challenges', getChallenges);
 router.post('/challenges/:id/interest', expressInterest);
 router.post('/challenges/:id/accept', acceptChallenge);
+router.post('/challenges/:id/decline', declineChallenge);
 
 module.exports = router;
+

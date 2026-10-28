@@ -14,7 +14,7 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
-router.get('/', getTeams);
+router.get('/', authorize('UNIVERSITY', 'FACULTY', 'STUDENT', 'ADMIN'), getTeams);
 router.post('/', authorize('UNIVERSITY', 'ADMIN'), createTeam);
 router.put('/:id', authorize('UNIVERSITY', 'ADMIN'), updateTeam);
 router.delete('/:id', authorize('UNIVERSITY', 'ADMIN'), deleteTeam);

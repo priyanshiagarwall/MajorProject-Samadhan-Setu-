@@ -7,6 +7,7 @@ import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   Compass,
   CheckSquare,
@@ -27,9 +28,11 @@ const UniversityDashboardPage = () => {
   const [data, setData] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [chalRes, profRes] = await Promise.all([
         universityService.getChallenges(),
@@ -39,6 +42,7 @@ const UniversityDashboardPage = () => {
       setProfile(profRes.data?.university);
     } catch (err) {
       console.error('Failed to load university dashboard data:', err);
+      setError(err.message || 'Failed to load university innovation metrics & research cohorts.');
     } finally {
       setLoading(false);
     }
@@ -52,6 +56,17 @@ const UniversityDashboardPage = () => {
     return <LoadingState message="Loading university innovation metrics & research cohorts..." />;
   }
 
+  if (error) {
+    return (
+      <ErrorState
+        title="Dashboard Connection Error"
+        message={error}
+        onRetry={fetchData}
+        retryLabel="Retry Dashboard"
+      />
+    );
+  }
+
   const { stats = {}, availableChallenges = [], assignedChallenges = [] } = data || {};
 
   return (
@@ -63,11 +78,11 @@ const UniversityDashboardPage = () => {
             Higher Education Research Workbench
           </div>
           <h1 className="text-2xl font-bold text-gov-navy">
-            {profile?.name || 'Delhi Technological University (DTU)'}
+            {profile?.name || 'Higher Education Research Workbench'}
           </h1>
           <p className="text-xs text-gov-text-secondary mt-0.5">
-            {profile?.campus || 'Shahbad Daulatpur, Bawana Road, Delhi'} &bull; District:{' '}
-            <strong>{profile?.district || 'North West Delhi'}</strong>
+            {profile?.campus || 'Campus not specified'} &bull; District:{' '}
+            <strong>{profile?.district || 'Delhi'}</strong>
           </p>
         </div>
 
@@ -119,7 +134,7 @@ const UniversityDashboardPage = () => {
 
         <MetricCard
           title="Student Teams"
-          value={stats.studentTeams ?? 14}
+          value={stats.studentTeams ?? 0}
           subtitle="Multidisciplinary cohorts"
           icon={Users2}
           accent="indigo"
@@ -127,7 +142,7 @@ const UniversityDashboardPage = () => {
 
         <MetricCard
           title="Faculty Mentors"
-          value={stats.facultyMentors ?? 8}
+          value={stats.facultyMentors ?? 0}
           subtitle="Supervising researchers"
           icon={GraduationCap}
           accent="maroon"

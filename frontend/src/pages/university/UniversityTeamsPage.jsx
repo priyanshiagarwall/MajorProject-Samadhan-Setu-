@@ -4,17 +4,17 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import LoadingState from '../../components/common/LoadingState';
+import ErrorState from '../../components/common/ErrorState';
 import {
   Users2,
   Plus,
   Trash2,
   GraduationCap,
   Briefcase,
-  UserCheck,
-  Shield,
   CheckCircle,
   X,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 const ROLE_OPTIONS = [
@@ -34,6 +34,7 @@ const UniversityTeamsPage = () => {
   const [facultyList, setFacultyList] = useState([]);
   const [studentList, setStudentList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Create Team Modal
   const [showModal, setShowModal] = useState(false);
@@ -42,12 +43,18 @@ const UniversityTeamsPage = () => {
   const [selectedMentor, setSelectedMentor] = useState('');
   const [members, setMembers] = useState([]); // [{ student: id, role: string }]
 
+  // Disband confirmation modal
+  const [disbandingTeam, setDisbandingTeam] = useState(null);
+  const [disbanding, setDisbanding] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
+    setErrorMsg('');
     try {
       const [teamsRes, projRes, facRes, stuRes] = await Promise.all([
         projectService.getTeams(),
@@ -61,7 +68,7 @@ const UniversityTeamsPage = () => {
       setStudentList(stuRes.data?.students || []);
     } catch (err) {
       console.error(err);
-      setErrorMsg('Failed to load university teams');
+      setError(err.message || 'Failed to load university teams and student cohorts.');
     } finally {
       setLoading(false);
     }
@@ -71,9 +78,28 @@ const UniversityTeamsPage = () => {
     fetchData();
   }, []);
 
+  const handleOpenModal = () => {
+    setShowModal(true);
+    setErrorMsg('');
+    // Pick first candidate that is unassigned
+    const available = studentList.filter((s) => !s.assignedTeam);
+    if (available.length > 0) {
+      setMembers([{ student: available[0]._id, role: 'Team Lead' }]);
+    } else if (studentList.length > 0) {
+      setMembers([{ student: studentList[0]._id, role: 'Team Lead' }]);
+    } else {
+      setMembers([]);
+    }
+  };
+
   const handleAddMemberRow = () => {
     if (studentList.length === 0) return;
-    setMembers([...members, { student: studentList[0]._id, role: 'Research' }]);
+    const currentSelected = members.map((m) => m.student);
+    const candidate =
+      studentList.find((s) => !s.assignedTeam && !currentSelected.includes(s._id)) ||
+      studentList.find((s) => !currentSelected.includes(s._id)) ||
+      studentList[0];
+    setMembers([...members, { student: candidate._id, role: 'Research' }]);
   };
 
   const handleMemberChange = (idx, field, value) => {
@@ -89,6 +115,13 @@ const UniversityTeamsPage = () => {
   const handleCreateTeam = async (e) => {
     e.preventDefault();
     if (!teamName.trim()) return;
+
+    // Client-side duplicate check
+    const studentIds = members.map((m) => m.student);
+    if (new Set(studentIds).size !== studentIds.length) {
+      setErrorMsg('Duplicate students selected in team members list. Each student can only be added once.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg('');
@@ -112,6 +145,23 @@ const UniversityTeamsPage = () => {
       setErrorMsg(err.message || 'Failed to create team');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmDisband = async () => {
+    if (!disbandingTeam) return;
+    setDisbanding(true);
+    setErrorMsg('');
+    try {
+      await projectService.deleteTeam(disbandingTeam._id);
+      setActionSuccess(`Team "${disbandingTeam.name}" disbanded successfully.`);
+      setDisbandingTeam(null);
+      fetchData();
+      setTimeout(() => setActionSuccess(''), 4000);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to disband team');
+    } finally {
+      setDisbanding(false);
     }
   };
 
@@ -139,12 +189,7 @@ const UniversityTeamsPage = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => {
-              setShowModal(true);
-              if (members.length === 0 && studentList.length > 0) {
-                setMembers([{ student: studentList[0]._id, role: 'Team Lead' }]);
-              }
-            }}
+            onClick={handleOpenModal}
             icon={Plus}
             className="bg-gov-maroon hover:bg-gov-maroon-dark text-white"
           >
@@ -168,13 +213,20 @@ const UniversityTeamsPage = () => {
 
       {loading ? (
         <LoadingState message="Loading multidisciplinary student teams..." />
+      ) : error ? (
+        <ErrorState
+          title="Failed to Load Teams"
+          message={error}
+          onRetry={fetchData}
+          retryLabel="Retry Loading Teams"
+        />
       ) : teams.length === 0 ? (
         <Card accent="none" className="py-12 text-center text-xs text-gov-text-muted space-y-3">
           <p className="font-bold text-gov-navy text-sm">No Student Teams Formed Yet</p>
           <p className="max-w-md mx-auto text-[11px]">
             Assemble cross-functional teams with hardware, software, AI/ML, and research roles linked to university innovation projects.
           </p>
-          <Button variant="primary" size="sm" onClick={() => setShowModal(true)} icon={Plus}>
+          <Button variant="primary" size="sm" onClick={handleOpenModal} icon={Plus}>
             Form First Team
           </Button>
         </Card>
@@ -185,23 +237,33 @@ const UniversityTeamsPage = () => {
               <div className="flex items-start justify-between border-b border-gov-border pb-3">
                 <div>
                   <h3 className="font-bold text-gov-navy text-base leading-snug">
-                    {t.name}
+                    {t.name || 'Not provided'}
                   </h3>
                   <div className="text-[11px] text-gov-text-muted mt-0.5 flex items-center space-x-2">
                     {t.project ? (
                       <span className="font-semibold text-gov-maroon flex items-center">
                         <Briefcase className="w-3.5 h-3.5 mr-1" />
-                        Project: {t.project.title}
+                        Project: {t.project.title || 'Not provided'}
                       </span>
                     ) : (
-                      <span>Unassigned Project</span>
+                      <span>Project: Not provided</span>
                     )}
                   </div>
                 </div>
 
-                <Badge variant="navy">
-                  {t.members?.length || 0} Members
-                </Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="navy">
+                    {t.members?.length || 0} Members
+                  </Badge>
+                  <button
+                    type="button"
+                    onClick={() => setDisbandingTeam(t)}
+                    className="text-gray-400 hover:text-red-600 p-1 rounded-xs transition-colors"
+                    title="Disband Team"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Faculty Mentor */}
@@ -210,8 +272,10 @@ const UniversityTeamsPage = () => {
                   <div className="flex items-center space-x-2">
                     <GraduationCap className="w-4 h-4 text-gov-maroon" />
                     <div>
-                      <span className="font-bold text-gov-navy">{t.facultyMentor.name}</span>
-                      <span className="text-gray-500 text-[10px] ml-1">({t.facultyMentor.department})</span>
+                      <span className="font-bold text-gov-navy">{t.facultyMentor.name || 'Not provided'}</span>
+                      <span className="text-gray-500 text-[10px] ml-1">
+                        ({t.facultyMentor.department || 'Not provided'})
+                      </span>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold uppercase text-gov-maroon bg-white px-1.5 py-0.5 rounded-xs border border-gov-border">
@@ -229,9 +293,11 @@ const UniversityTeamsPage = () => {
                   {(t.members || []).map((m, idx) => (
                     <div key={idx} className="p-2.5 flex items-center justify-between hover:bg-gov-sand-50">
                       <div>
-                        <div className="font-bold text-gov-navy">{m.student?.name || 'Student'}</div>
+                        <div className="font-bold text-gov-navy">
+                          {m.student?.name || 'Not provided'}
+                        </div>
                         <div className="text-[10px] text-gray-500">
-                          {m.student?.department} &bull; {m.student?.year}
+                          {m.student?.department || 'Not provided'} &bull; {m.student?.year || 'Not provided'}
                         </div>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-xs uppercase ${
@@ -240,7 +306,7 @@ const UniversityTeamsPage = () => {
                         m.role === 'Hardware' ? 'bg-emerald-100 text-emerald-900' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {m.role}
+                        {m.role || 'Research'}
                       </span>
                     </div>
                   ))}
@@ -327,52 +393,79 @@ const UniversityTeamsPage = () => {
                   <span className="font-bold text-gov-navy uppercase text-[10px] tracking-wider">
                     Student Members & Designated Roles ({members.length})
                   </span>
-                  <Button variant="subtle" size="sm" type="button" onClick={handleAddMemberRow} icon={Plus}>
+                  <Button
+                    variant="subtle"
+                    size="sm"
+                    type="button"
+                    onClick={handleAddMemberRow}
+                    icon={Plus}
+                    disabled={studentList.length === 0}
+                  >
                     Add Member
                   </Button>
                 </div>
 
-                {members.length === 0 ? (
+                {studentList.length === 0 ? (
                   <div className="p-4 text-center text-gov-text-muted bg-gov-sand-50 border border-gov-border rounded-xs">
-                    No students added yet. Click "Add Member" above to assign innovators.
+                    No registered students found. Please onboard students in the Students directory before forming teams.
+                  </div>
+                ) : members.length === 0 ? (
+                  <div className="p-4 text-center text-gov-text-muted bg-gov-sand-50 border border-gov-border rounded-xs">
+                    No students added yet. Click &quot;Add Member&quot; above to assign innovators.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {members.map((m, idx) => (
-                      <div key={idx} className="p-2.5 bg-gov-sand-50 rounded-xs border border-gov-border flex items-center space-x-2">
-                        <select
-                          value={m.student}
-                          onChange={(e) => handleMemberChange(idx, 'student', e.target.value)}
-                          className="flex-1 font-serif border border-gov-border rounded-xs px-2 py-1 text-xs bg-white"
-                        >
-                          {studentList.map((s) => (
-                            <option key={s._id} value={s._id}>
-                              {s.name} ({s.department} - {s.year})
-                            </option>
-                          ))}
-                        </select>
+                    {members.map((m, idx) => {
+                      const otherSelectedIds = members
+                        .filter((_, i) => i !== idx)
+                        .map((other) => other.student);
 
-                        <select
-                          value={m.role}
-                          onChange={(e) => handleMemberChange(idx, 'role', e.target.value)}
-                          className="w-36 font-serif border border-gov-border rounded-xs px-2 py-1 text-xs bg-white font-semibold"
-                        >
-                          {ROLE_OPTIONS.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
+                      return (
+                        <div key={idx} className="p-2.5 bg-gov-sand-50 rounded-xs border border-gov-border flex items-center space-x-2">
+                          <select
+                            value={m.student}
+                            onChange={(e) => handleMemberChange(idx, 'student', e.target.value)}
+                            className="flex-1 font-serif border border-gov-border rounded-xs px-2 py-1 text-xs bg-white"
+                          >
+                            {studentList.map((s) => {
+                              const isAlreadySelected = otherSelectedIds.includes(s._id);
+                              return (
+                                <option
+                                  key={s._id}
+                                  value={s._id}
+                                  disabled={isAlreadySelected}
+                                >
+                                  {s.name} ({s.department} - {s.year})
+                                  {s.assignedTeam ? ' [Currently Assigned]' : ''}
+                                  {isAlreadySelected ? ' (Already Selected)' : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMemberRow(idx)}
-                          className="text-gray-400 hover:text-red-600 p-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                          <select
+                            value={m.role}
+                            onChange={(e) => handleMemberChange(idx, 'role', e.target.value)}
+                            className="w-36 font-serif border border-gov-border rounded-xs px-2 py-1 text-xs bg-white font-semibold"
+                          >
+                            {ROLE_OPTIONS.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMemberRow(idx)}
+                            className="text-gray-400 hover:text-red-600 p-1"
+                            title="Remove Row"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -381,11 +474,55 @@ const UniversityTeamsPage = () => {
                 <Button variant="ghost" size="sm" onClick={() => setShowModal(false)} disabled={submitting}>
                   Cancel
                 </Button>
-                <Button variant="primary" size="sm" type="submit" disabled={submitting} className="bg-gov-maroon text-white">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="submit"
+                  disabled={submitting || members.length === 0}
+                  className="bg-gov-maroon text-white"
+                >
                   {submitting ? 'Creating Team...' : 'Form Team & Assign Roles'}
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Confirmation Modal: Disband Team */}
+      {disbandingTeam && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-gov-border rounded-sm max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-2 text-rose-700 border-b border-gov-border pb-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <h3 className="font-bold text-gov-navy text-base">
+                Disband Team &quot;{disbandingTeam.name}&quot;?
+              </h3>
+            </div>
+
+            <p className="text-xs text-gov-text-secondary leading-relaxed">
+              Are you sure you want to disband this team? Associated project links and student assignments will be safely unlinked. This action cannot be undone.
+            </p>
+
+            <div className="pt-2 flex items-center justify-end space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDisbandingTeam(null)}
+                disabled={disbanding}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDisband}
+                disabled={disbanding}
+                className="bg-rose-700 hover:bg-rose-800 text-white"
+              >
+                {disbanding ? 'Disbanding...' : 'Disband Team'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
